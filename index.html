@@ -519,9 +519,12 @@
                 isTeacher = snapshot.val() === true;
                 
                 if (!isTeacher) {
-                    // Set as teacher if first login
-                    await database.ref('users/' + currentUser.uid + '/isTeacher').set(true);
-                    isTeacher = true;
+                    // User is not authorized as a teacher
+                    await auth.signOut();
+                    currentUser = null;
+                    errorDiv.innerHTML = '<div class="error-message">This account is not authorized for teacher access. Please contact an administrator to request teacher privileges.</div>';
+                    document.getElementById('teacher-login-btn').disabled = false;
+                    return;
                 }
                 
                 showTeacherView();
