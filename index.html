@@ -253,6 +253,16 @@
             border: 1px solid #c3e6cb;
         }
         
+        .incorrect-count {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            text-align: center;
+            font-size: 14px;
+        }
+        
         @media (max-width: 600px) {
             .container {
                 padding: 20px;
@@ -305,6 +315,7 @@
             <div class="progress-bar">
                 <div class="progress-fill" id="progress-fill">Question 1 of 10</div>
             </div>
+            <div id="incorrect-count-display"></div>
             <div class="question-display">
                 <div class="timer" id="timer">Time: 0.0s</div>
                 <div class="question-text" id="question-text">5 + 3 = ?</div>
@@ -333,6 +344,10 @@
                     <div class="stat-card">
                         <div class="stat-value" id="accuracy">0%</div>
                         <div class="stat-label">Accuracy</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="incorrect-remaining">0</div>
+                        <div class="stat-label">Questions to Master</div>
                     </div>
                 </div>
                 <div style="margin-top: 30px;">
@@ -384,6 +399,7 @@
         let startTime = null;
         let timerInterval = null;
         let studentData = null;
+        let incorrectQuestions = {}; // Track incorrect questions for current session
         
         // Level definitions
         const levels = {
@@ -460,11 +476,11 @@
                     isTeacher: false,
                     createdAt: new Date().toISOString(),
                     levels: {
-                        A: { unlocked: true, mastery: null, attempts: [], weakAreas: {} },
-                        B: { unlocked: false, mastery: null, attempts: [], weakAreas: {} },
-                        C: { unlocked: false, mastery: null, attempts: [], weakAreas: {} },
-                        D: { unlocked: false, mastery: null, attempts: [], weakAreas: {} },
-                        E: { unlocked: false, mastery: null, attempts: [], weakAreas: {} }
+                        A: { unlocked: true, mastery: null, attempts: [], incorrectQuestions: {} },
+                        B: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} },
+                        C: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} },
+                        D: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} },
+                        E: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} }
                     }
                 });
                 
@@ -547,14 +563,21 @@
                     email: currentUser.email,
                     isTeacher: false,
                     levels: {
-                        A: { unlocked: true, mastery: null, attempts: [], weakAreas: {} },
-                        B: { unlocked: false, mastery: null, attempts: [], weakAreas: {} },
-                        C: { unlocked: false, mastery: null, attempts: [], weakAreas: {} },
-                        D: { unlocked: false, mastery: null, attempts: [], weakAreas: {} },
-                        E: { unlocked: false, mastery: null, attempts: [], weakAreas: {} }
+                        A: { unlocked: true, mastery: null, attempts: [], incorrectQuestions: {} },
+                        B: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} },
+                        C: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} },
+                        D: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} },
+                        E: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} }
                     }
                 };
                 await database.ref('users/' + currentUser.uid).set(studentData);
+            }
+            
+            // Ensure each level has incorrectQuestions
+            for (let levelKey in studentData.levels) {
+                if (!studentData.levels[levelKey].incorrectQuestions) {
+                    studentData.levels[levelKey].incorrectQuestions = {};
+                }
             }
         }
         
@@ -595,10 +618,18 @@
                     masteryText = `<div style="font-size: 14px; margin-top: 10px;">${studentLevel.mastery}</div>`;
                 }
                 
+                // Count incorrect questions
+                const incorrectCount = Object.keys(studentLevel.incorrectQuestions || {}).length;
+                let incorrectText = '';
+                if (incorrectCount > 0) {
+                    incorrectText = `<div style="font-size: 12px; margin-top: 5px; background: rgba(255,255,255,0.3); padding: 5px; border-radius: 5px;">📝 ${incorrectCount} to master</div>`;
+                }
+                
                 card.innerHTML = `
                     <h3>${level.name}</h3>
                     <p style="font-size: 14px;">${level.description}</p>
                     ${masteryText}
+                    ${incorrectText}
                 `;
                 
                 if (studentLevel.unlocked) {
@@ -615,7 +646,18 @@
             currentLevel = levelKey;
             currentQuestion = 0;
             answers = [];
+            incorrectQuestions = {}; // Reset session incorrect questions
             questions = generateQuestions(levelKey);
+            
+            // Display incorrect question count
+            const incorrectCount = Object.keys(studentData.levels[levelKey].incorrectQuestions || {}).length;
+            const displayDiv = document.getElementById('incorrect-count-display');
+            if (incorrectCount > 0) {
+                displayDiv.innerHTML = `<div class="incorrect-count">📝 You have ${incorrectCount} question${incorrectCount !== 1 ? 's' : ''} to master in this level</div>`;
+            } else {
+                displayDiv.innerHTML = '';
+            }
+            
             showNextQuestion();
             showScreen('question-screen');
         }
@@ -625,26 +667,37 @@
             const studentLevel = studentData.levels[levelKey];
             const questionSet = [];
             
-            // Convert weakAreas object to array
-            const weakAreas = studentLevel.weakAreas || {};
-            const weakQuestions = Object.keys(weakAreas);
+            // Get incorrect questions from Firebase
+            const storedIncorrect = studentLevel.incorrectQuestions || {};
+            const incorrectArray = Object.keys(storedIncorrect).map(key => {
+                const parts = key.split('|');
+                return {
+                    num1: parseInt(parts[0]),
+                    num2: parseInt(parts[1]),
+                    op: parts[2],
+                    answer: parseInt(parts[3]),
+                    fromIncorrectList: true
+                };
+            });
             
-            // 60% new questions, 40% from weak areas
-            const weakAreaCount = Math.min(4, weakQuestions.length);
-            const newQuestionCount = 10 - weakAreaCount;
-            
-            // Add weak area questions
-            for (let i = 0; i < weakAreaCount && i < weakQuestions.length; i++) {
-                const q = weakQuestions[i].split('|');
-                questionSet.push({
-                    num1: parseInt(q[0]),
-                    num2: parseInt(q[1]),
-                    op: q[2],
-                    answer: parseInt(q[3])
-                });
+            // Determine how many questions to pull from incorrect list
+            const incorrectCount = incorrectArray.length;
+            let incorrectToUse = 0;
+            if (incorrectCount >= 3) {
+                incorrectToUse = 3;
+            } else if (incorrectCount === 2) {
+                incorrectToUse = 2;
+            } else if (incorrectCount === 1) {
+                incorrectToUse = 1;
             }
             
-            // Generate new questions
+            // Add questions from incorrect list
+            for (let i = 0; i < incorrectToUse && i < incorrectArray.length; i++) {
+                questionSet.push(incorrectArray[i]);
+            }
+            
+            // Generate new questions for the rest
+            const newQuestionCount = 10 - incorrectToUse;
             for (let i = 0; i < newQuestionCount; i++) {
                 questionSet.push(generateSingleQuestion(level));
             }
@@ -677,7 +730,7 @@
                 num1 = num2 * answer;
             }
             
-            return { num1, num2, op, answer };
+            return { num1, num2, op, answer, fromIncorrectList: false };
         }
         
         function showNextQuestion() {
@@ -732,12 +785,10 @@
                     time: timeTaken
                 });
                 
-                // Remove from weak areas if answered quickly and correctly
-                if (timeTaken <= timings.ACCOMPLISHED) {
+                // Remove from incorrect list if it was from there
+                if (q.fromIncorrectList) {
                     const key = `${q.num1}|${q.num2}|${q.op}|${q.answer}`;
-                    if (studentData.levels[currentLevel].weakAreas) {
-                        delete studentData.levels[currentLevel].weakAreas[key];
-                    }
+                    delete incorrectQuestions[key];
                 }
                 
                 setTimeout(() => {
@@ -762,13 +813,9 @@
                         time: timeTaken
                     });
                     
-                    // Track weak areas
+                    // Add to incorrect questions list for this session
                     const key = `${q.num1}|${q.num2}|${q.op}|${q.answer}`;
-                    if (!studentData.levels[currentLevel].weakAreas) {
-                        studentData.levels[currentLevel].weakAreas = {};
-                    }
-                    studentData.levels[currentLevel].weakAreas[key] = 
-                        (studentData.levels[currentLevel].weakAreas[key] || 0) + 1;
+                    incorrectQuestions[key] = true;
                     
                     setTimeout(() => {
                         currentQuestion++;
@@ -786,8 +833,34 @@
             const avgTime = totalTime / answers.length;
             const accuracy = (correctCount / answers.length) * 100;
             
+            // Update Firebase incorrect questions list
+            const levelRef = database.ref('users/' + currentUser.uid + '/levels/' + currentLevel);
+            const currentIncorrect = studentData.levels[currentLevel].incorrectQuestions || {};
+            
+            // Add new incorrect questions
+            for (let key in incorrectQuestions) {
+                currentIncorrect[key] = true;
+            }
+            
+            // Remove questions that were answered correctly this session
+            for (let answer of answers) {
+                if (answer.correct && answer.question.fromIncorrectList) {
+                    const key = `${answer.question.num1}|${answer.question.num2}|${answer.question.op}|${answer.question.answer}`;
+                    delete currentIncorrect[key];
+                }
+            }
+            
+            // Save updated incorrect questions to Firebase
+            await levelRef.child('incorrectQuestions').set(currentIncorrect);
+            studentData.levels[currentLevel].incorrectQuestions = currentIncorrect;
+            
+            // Count remaining incorrect questions
+            const remainingIncorrect = Object.keys(currentIncorrect).length;
+            
+            // Determine mastery level
+            // To achieve mastery, must have no incorrect questions AND meet time/accuracy requirements
             let mastery = null;
-            if (accuracy >= 80) {
+            if (accuracy >= 80 && remainingIncorrect === 0) {
                 if (avgTime <= timings.MASTERY) {
                     mastery = 'MASTERY';
                 } else if (avgTime <= timings.ACCOMPLISHED) {
@@ -804,32 +877,31 @@
                 avgTime: avgTime,
                 accuracy: accuracy,
                 mastery: mastery,
+                remainingIncorrect: remainingIncorrect,
                 answers: answers.map(a => ({
                     question: `${a.question.num1} ${a.question.op} ${a.question.num2}`,
                     correctAnswer: a.question.answer,
                     userAnswer: a.userAnswer,
                     correct: a.correct,
-                    time: a.time
+                    time: a.time,
+                    wasFromIncorrectList: a.question.fromIncorrectList || false
                 }))
             };
             
             // Update Firebase
-            const levelRef = database.ref('users/' + currentUser.uid + '/levels/' + currentLevel);
-            
             // Add attempt
             await levelRef.child('attempts').push(attemptData);
             
-            // Update mastery level
-            const currentMastery = studentData.levels[currentLevel].mastery;
-            if (mastery && (!currentMastery || 
-                (mastery === 'MASTERY') ||
-                (mastery === 'ACCOMPLISHED' && currentMastery === 'BASIC'))) {
-                await levelRef.child('mastery').set(mastery);
-                studentData.levels[currentLevel].mastery = mastery;
+            // Update mastery level only if achieved
+            if (mastery) {
+                const currentMastery = studentData.levels[currentLevel].mastery;
+                if (!currentMastery || 
+                    (mastery === 'MASTERY') ||
+                    (mastery === 'ACCOMPLISHED' && currentMastery === 'BASIC')) {
+                    await levelRef.child('mastery').set(mastery);
+                    studentData.levels[currentLevel].mastery = mastery;
+                }
             }
-            
-            // Update weak areas
-            await levelRef.child('weakAreas').set(studentData.levels[currentLevel].weakAreas || {});
             
             // Unlock next level if ACCOMPLISHED or MASTERY
             if (mastery === 'ACCOMPLISHED' || mastery === 'MASTERY') {
@@ -846,12 +918,17 @@
             document.getElementById('correct-count').textContent = correctCount;
             document.getElementById('avg-time').textContent = avgTime.toFixed(1) + 's';
             document.getElementById('accuracy').textContent = accuracy.toFixed(0) + '%';
+            document.getElementById('incorrect-remaining').textContent = remainingIncorrect;
             
             const badgeDiv = document.getElementById('mastery-badge');
             if (mastery) {
                 badgeDiv.innerHTML = `<div class="mastery-badge mastery-${mastery.toLowerCase()}">${mastery}</div>`;
+            } else if (remainingIncorrect > 0) {
+                badgeDiv.innerHTML = `<p style="color: #666;">You still have ${remainingIncorrect} question${remainingIncorrect !== 1 ? 's' : ''} to master. Keep practicing!</p>`;
+            } else if (accuracy < 80) {
+                badgeDiv.innerHTML = '<p style="color: #666;">You need 80% accuracy to achieve mastery. Keep practicing!</p>';
             } else {
-                badgeDiv.innerHTML = '<p style="color: #666;">Keep practicing to achieve a mastery level!</p>';
+                badgeDiv.innerHTML = '<p style="color: #666;">Work on your speed to achieve mastery!</p>';
             }
             
             showScreen('results-screen');
@@ -901,12 +978,14 @@
                                     const attemptsArray = Object.values(level.attempts);
                                     if (attemptsArray.length > 0) {
                                         const lastAttempt = attemptsArray[attemptsArray.length - 1];
+                                        const incorrectCount = Object.keys(level.incorrectQuestions || {}).length;
                                         html += `
                                             <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 5px;">
                                                 <strong>${levelInfo.name}</strong>: 
                                                 ${level.mastery ? `<span class="mastery-badge mastery-${level.mastery.toLowerCase()}" style="font-size: 12px; padding: 3px 10px;">${level.mastery}</span>` : 'In Progress'}
                                                 <br>
                                                 <small>Last: ${lastAttempt.correctCount}/10 correct, ${lastAttempt.avgTime.toFixed(1)}s avg, ${attemptsArray.length} attempts</small>
+                                                ${incorrectCount > 0 ? `<br><small style="color: #dc3545;">📝 ${incorrectCount} questions to master</small>` : ''}
                                             </div>`;
                                     }
                                 }
