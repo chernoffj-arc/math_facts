@@ -59,6 +59,12 @@
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }
         
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
         .btn-secondary {
             background: #6c757d;
         }
@@ -67,7 +73,7 @@
             background: #5a6268;
         }
         
-        input[type="text"], input[type="password"], input[type="number"] {
+        input[type="text"], input[type="password"], input[type="number"], input[type="email"] {
             width: 100%;
             padding: 12px;
             margin: 10px 0;
@@ -223,6 +229,30 @@
             margin: 10px 0;
         }
         
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+        }
+        
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border: 1px solid #c3e6cb;
+        }
+        
         @media (max-width: 600px) {
             .container {
                 padding: 20px;
@@ -245,14 +275,18 @@
         <!-- Login Screen -->
         <div class="login-screen active">
             <h2 style="text-align: center; margin-bottom: 20px;">Login</h2>
-            <input type="text" id="username" placeholder="Username">
+            <div id="login-error"></div>
+            <input type="email" id="email" placeholder="Email">
             <input type="password" id="password" placeholder="Password">
             <div style="text-align: center; margin-top: 20px;">
-                <button class="btn" onclick="login()">Student Login</button>
-                <button class="btn btn-secondary" onclick="teacherLogin()">Teacher Login</button>
+                <button class="btn" onclick="login()" id="student-login-btn">Student Login</button>
+                <button class="btn btn-secondary" onclick="teacherLogin()" id="teacher-login-btn">Teacher Login</button>
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="btn" onclick="showSignup()" style="background: #28a745;">Sign Up</button>
             </div>
             <p style="text-align: center; margin-top: 20px; color: #666; font-size: 14px;">
-                Demo: Use any username/password to login
+                Create an account or login with your email
             </p>
         </div>
         
@@ -314,12 +348,33 @@
                 <h2>Teacher Dashboard</h2>
                 <button class="btn btn-secondary" onclick="logout()">Logout</button>
             </div>
-            <div id="teacher-stats"></div>
+            <div id="teacher-stats" class="loading">Loading student data...</div>
         </div>
     </div>
 
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
     <script>
-        // Data Storage (in-memory for session)
+        const firebaseConfig = {
+          apiKey: "AIzaSyD93cqPEEZ-zL2_CjbszQIBXPWLe2wRd8g",
+          authDomain: "math-facts-62a94.firebaseapp.com",
+          databaseURL: "https://math-facts-62a94-default-rtdb.firebaseio.com",
+          projectId: "math-facts-62a94",
+          storageBucket: "math-facts-62a94.firebasestorage.app",
+          messagingSenderId: "39584139494",
+          appId: "1:39584139494:web:52c8004c167d3172dc5327",
+          measurementId: "G-5GDFKPWT4Y"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+        
+        // Global variables
         let currentUser = null;
         let isTeacher = false;
         let currentLevel = null;
@@ -328,11 +383,7 @@
         let answers = [];
         let startTime = null;
         let timerInterval = null;
-        
-        // Student progress data
-        let studentData = {
-            students: {}
-        };
+        let studentData = null;
         
         // Level definitions
         const levels = {
@@ -381,19 +432,117 @@
             BASIC: 8
         };
         
-        function login() {
-            const username = document.getElementById('username').value.trim();
-            if (!username) {
-                alert('Please enter a username');
+        // Check authentication state
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                currentUser = user;
+                await loadUserData();
+            }
+        });
+        
+        async function showSignup() {
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('login-error');
+            
+            if (!email || !password) {
+                errorDiv.innerHTML = '<div class="error-message">Please enter email and password</div>';
                 return;
             }
             
-            currentUser = username;
-            isTeacher = false;
+            try {
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                const user = userCredential.user;
+                
+                // Initialize user data in database
+                await database.ref('users/' + user.uid).set({
+                    email: user.email,
+                    isTeacher: false,
+                    createdAt: new Date().toISOString(),
+                    levels: {
+                        A: { unlocked: true, mastery: null, attempts: [], weakAreas: {} },
+                        B: { unlocked: false, mastery: null, attempts: [], weakAreas: {} },
+                        C: { unlocked: false, mastery: null, attempts: [], weakAreas: {} },
+                        D: { unlocked: false, mastery: null, attempts: [], weakAreas: {} },
+                        E: { unlocked: false, mastery: null, attempts: [], weakAreas: {} }
+                    }
+                });
+                
+                errorDiv.innerHTML = '<div class="success-message">Account created successfully!</div>';
+            } catch (error) {
+                errorDiv.innerHTML = `<div class="error-message">${error.message}</div>`;
+            }
+        }
+        
+        async function login() {
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('login-error');
             
-            // Initialize student data if not exists
-            if (!studentData.students[username]) {
-                studentData.students[username] = {
+            if (!email || !password) {
+                errorDiv.innerHTML = '<div class="error-message">Please enter email and password</div>';
+                return;
+            }
+            
+            try {
+                document.getElementById('student-login-btn').disabled = true;
+                const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                currentUser = userCredential.user;
+                isTeacher = false;
+                
+                await loadUserData();
+                showLevelSelect();
+                errorDiv.innerHTML = '';
+            } catch (error) {
+                errorDiv.innerHTML = `<div class="error-message">${error.message}</div>`;
+                document.getElementById('student-login-btn').disabled = false;
+            }
+        }
+        
+        async function teacherLogin() {
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('login-error');
+            
+            if (!email || !password) {
+                errorDiv.innerHTML = '<div class="error-message">Please enter email and password</div>';
+                return;
+            }
+            
+            try {
+                document.getElementById('teacher-login-btn').disabled = true;
+                const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                currentUser = userCredential.user;
+                
+                // Check if user is a teacher
+                const snapshot = await database.ref('users/' + currentUser.uid + '/isTeacher').once('value');
+                isTeacher = snapshot.val() === true;
+                
+                if (!isTeacher) {
+                    // Set as teacher if first login
+                    await database.ref('users/' + currentUser.uid + '/isTeacher').set(true);
+                    isTeacher = true;
+                }
+                
+                showTeacherView();
+                errorDiv.innerHTML = '';
+            } catch (error) {
+                errorDiv.innerHTML = `<div class="error-message">${error.message}</div>`;
+                document.getElementById('teacher-login-btn').disabled = false;
+            }
+        }
+        
+        async function loadUserData() {
+            if (!currentUser) return;
+            
+            const snapshot = await database.ref('users/' + currentUser.uid).once('value');
+            studentData = snapshot.val();
+            
+            // Initialize if no data exists
+            if (!studentData || !studentData.levels) {
+                studentData = {
+                    email: currentUser.email,
+                    isTeacher: false,
                     levels: {
                         A: { unlocked: true, mastery: null, attempts: [], weakAreas: {} },
                         B: { unlocked: false, mastery: null, attempts: [], weakAreas: {} },
@@ -402,27 +551,16 @@
                         E: { unlocked: false, mastery: null, attempts: [], weakAreas: {} }
                     }
                 };
+                await database.ref('users/' + currentUser.uid).set(studentData);
             }
-            
-            showLevelSelect();
         }
         
-        function teacherLogin() {
-            const username = document.getElementById('username').value.trim();
-            if (!username) {
-                alert('Please enter a username');
-                return;
-            }
-            
-            currentUser = username;
-            isTeacher = true;
-            showTeacherView();
-        }
-        
-        function logout() {
+        async function logout() {
+            await auth.signOut();
             currentUser = null;
             isTeacher = false;
-            document.getElementById('username').value = '';
+            studentData = null;
+            document.getElementById('email').value = '';
             document.getElementById('password').value = '';
             showScreen('login-screen');
         }
@@ -435,11 +573,13 @@
         }
         
         function showLevelSelect() {
-            document.getElementById('student-name').textContent = currentUser;
+            if (!studentData) return;
+            
+            document.getElementById('student-name').textContent = currentUser.email.split('@')[0];
             const grid = document.getElementById('level-grid');
             grid.innerHTML = '';
             
-            const studentLevels = studentData.students[currentUser].levels;
+            const studentLevels = studentData.levels;
             
             for (let levelKey in levels) {
                 const level = levels[levelKey];
@@ -479,15 +619,18 @@
         
         function generateQuestions(levelKey) {
             const level = levels[levelKey];
-            const studentLevel = studentData.students[currentUser].levels[levelKey];
+            const studentLevel = studentData.levels[levelKey];
             const questionSet = [];
             
+            // Convert weakAreas object to array
+            const weakAreas = studentLevel.weakAreas || {};
+            const weakQuestions = Object.keys(weakAreas);
+            
             // 60% new questions, 40% from weak areas
-            const weakAreaCount = Math.min(4, Object.keys(studentLevel.weakAreas).length);
+            const weakAreaCount = Math.min(4, weakQuestions.length);
             const newQuestionCount = 10 - weakAreaCount;
             
             // Add weak area questions
-            const weakQuestions = Object.keys(studentLevel.weakAreas);
             for (let i = 0; i < weakAreaCount && i < weakQuestions.length; i++) {
                 const q = weakQuestions[i].split('|');
                 questionSet.push({
@@ -512,12 +655,10 @@
             let num1, num2, answer;
             
             if (op === '+') {
-                // For addition, ensure the sum doesn't exceed maxNumber
                 answer = Math.floor(Math.random() * (level.maxNumber + 1));
                 num1 = Math.floor(Math.random() * (answer + 1));
                 num2 = answer - num1;
             } else if (op === '-') {
-                // For subtraction, num1 should be <= maxNumber
                 num1 = Math.floor(Math.random() * (level.maxNumber + 1));
                 num2 = Math.floor(Math.random() * (num1 + 1));
                 answer = num1 - num2;
@@ -568,19 +709,16 @@
             const q = questions[currentQuestion];
             const feedback = document.getElementById('feedback');
             
-            // Clear feedback if input is empty
             if (document.getElementById('answer-input').value === '') {
                 feedback.textContent = '';
                 feedback.style.color = '';
                 return;
             }
             
-            // Check if answer is correct
             if (userAnswer === q.answer) {
                 feedback.textContent = '✓ Correct!';
                 feedback.style.color = '#28a745';
                 
-                // Record the answer and move to next question after a brief delay
                 clearInterval(timerInterval);
                 const timeTaken = (Date.now() - startTime) / 1000;
                 
@@ -594,26 +732,23 @@
                 // Remove from weak areas if answered quickly and correctly
                 if (timeTaken <= timings.ACCOMPLISHED) {
                     const key = `${q.num1}|${q.num2}|${q.op}|${q.answer}`;
-                    const studentLevel = studentData.students[currentUser].levels[currentLevel];
-                    delete studentLevel.weakAreas[key];
+                    if (studentData.levels[currentLevel].weakAreas) {
+                        delete studentData.levels[currentLevel].weakAreas[key];
+                    }
                 }
                 
-                // Move to next question after a short delay
                 setTimeout(() => {
                     currentQuestion++;
                     showNextQuestion();
                 }, 500);
             } else {
-                // Check if the user has entered a complete wrong answer (not just typing)
                 const answerStr = userAnswer.toString();
                 const correctStr = q.answer.toString();
                 
-                // If user's answer has same or more digits than correct answer, it's wrong
                 if (answerStr.length >= correctStr.length && userAnswer !== q.answer) {
                     feedback.innerHTML = `✗ Incorrect. The answer is <strong>${q.answer}</strong>`;
                     feedback.style.color = '#dc3545';
                     
-                    // Record the answer and move to next question after showing correct answer
                     clearInterval(timerInterval);
                     const timeTaken = (Date.now() - startTime) / 1000;
                     
@@ -626,10 +761,12 @@
                     
                     // Track weak areas
                     const key = `${q.num1}|${q.num2}|${q.op}|${q.answer}`;
-                    const studentLevel = studentData.students[currentUser].levels[currentLevel];
-                    studentLevel.weakAreas[key] = (studentLevel.weakAreas[key] || 0) + 1;
+                    if (!studentData.levels[currentLevel].weakAreas) {
+                        studentData.levels[currentLevel].weakAreas = {};
+                    }
+                    studentData.levels[currentLevel].weakAreas[key] = 
+                        (studentData.levels[currentLevel].weakAreas[key] || 0) + 1;
                     
-                    // Move to next question after showing correct answer
                     setTimeout(() => {
                         currentQuestion++;
                         showNextQuestion();
@@ -638,19 +775,7 @@
             }
         }
         
-        function submitAnswer() {
-            // This function is no longer needed but kept for compatibility
-            checkAnswer();
-        }
-        
-        function checkEnter(event) {
-            // This function is no longer needed but kept for compatibility
-            if (event.key === 'Enter') {
-                checkAnswer();
-            }
-        }
-        
-        function showResults() {
+        async function showResults() {
             clearInterval(timerInterval);
             
             const correctCount = answers.filter(a => a.correct).length;
@@ -669,22 +794,39 @@
                 }
             }
             
-            // Update student data
-            const studentLevel = studentData.students[currentUser].levels[currentLevel];
-            studentLevel.attempts.push({
+            // Prepare attempt data
+            const attemptData = {
                 date: new Date().toISOString(),
                 correctCount: correctCount,
                 avgTime: avgTime,
                 accuracy: accuracy,
-                mastery: mastery
-            });
+                mastery: mastery,
+                answers: answers.map(a => ({
+                    question: `${a.question.num1} ${a.question.op} ${a.question.num2}`,
+                    correctAnswer: a.question.answer,
+                    userAnswer: a.userAnswer,
+                    correct: a.correct,
+                    time: a.time
+                }))
+            };
+            
+            // Update Firebase
+            const levelRef = database.ref('users/' + currentUser.uid + '/levels/' + currentLevel);
+            
+            // Add attempt
+            await levelRef.child('attempts').push(attemptData);
             
             // Update mastery level
-            if (mastery && (!studentLevel.mastery || 
+            const currentMastery = studentData.levels[currentLevel].mastery;
+            if (mastery && (!currentMastery || 
                 (mastery === 'MASTERY') ||
-                (mastery === 'ACCOMPLISHED' && studentLevel.mastery === 'BASIC'))) {
-                studentLevel.mastery = mastery;
+                (mastery === 'ACCOMPLISHED' && currentMastery === 'BASIC'))) {
+                await levelRef.child('mastery').set(mastery);
+                studentData.levels[currentLevel].mastery = mastery;
             }
+            
+            // Update weak areas
+            await levelRef.child('weakAreas').set(studentData.levels[currentLevel].weakAreas || {});
             
             // Unlock next level if ACCOMPLISHED or MASTERY
             if (mastery === 'ACCOMPLISHED' || mastery === 'MASTERY') {
@@ -692,7 +834,8 @@
                 const currentIndex = levelKeys.indexOf(currentLevel);
                 if (currentIndex < levelKeys.length - 1) {
                     const nextLevel = levelKeys[currentIndex + 1];
-                    studentData.students[currentUser].levels[nextLevel].unlocked = true;
+                    await database.ref('users/' + currentUser.uid + '/levels/' + nextLevel + '/unlocked').set(true);
+                    studentData.levels[nextLevel].unlocked = true;
                 }
             }
             
@@ -726,37 +869,56 @@
             startLevel(currentLevel);
         }
         
-        function showTeacherView() {
+        async function showTeacherView() {
             const statsDiv = document.getElementById('teacher-stats');
-            let html = '<h3>Student Progress Overview</h3>';
+            statsDiv.innerHTML = '<div class="loading">Loading student data...</div>';
             
-            if (Object.keys(studentData.students).length === 0) {
-                html += '<p style="color: #666; padding: 20px;">No student data available yet.</p>';
-            } else {
-                for (let studentName in studentData.students) {
-                    const student = studentData.students[studentName];
-                    html += `<div class="student-card">
-                        <h4>${studentName}</h4>`;
-                    
-                    for (let levelKey in student.levels) {
-                        const level = student.levels[levelKey];
-                        if (level.attempts.length > 0) {
-                            const lastAttempt = level.attempts[level.attempts.length - 1];
-                            html += `
-                                <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 5px;">
-                                    <strong>${levels[levelKey].name}</strong>: 
-                                    ${level.mastery ? `<span class="mastery-badge mastery-${level.mastery.toLowerCase()}" style="font-size: 12px; padding: 3px 10px;">${level.mastery}</span>` : 'In Progress'}
-                                    <br>
-                                    <small>Last: ${lastAttempt.correctCount}/10 correct, ${lastAttempt.avgTime.toFixed(1)}s avg, ${level.attempts.length} attempts</small>
-                                </div>`;
+            try {
+                const snapshot = await database.ref('users').once('value');
+                const allUsers = snapshot.val();
+                
+                let html = '<h3>Student Progress Overview</h3>';
+                
+                if (!allUsers) {
+                    html += '<p style="color: #666; padding: 20px;">No student data available yet.</p>';
+                } else {
+                    for (let userId in allUsers) {
+                        const user = allUsers[userId];
+                        if (user.isTeacher) continue; // Skip teachers
+                        
+                        html += `<div class="student-card">
+                            <h4>${user.email || 'Unknown Student'}</h4>`;
+                        
+                        if (user.levels) {
+                            for (let levelKey in user.levels) {
+                                const level = user.levels[levelKey];
+                                const levelInfo = levels[levelKey];
+                                
+                                if (level.attempts && typeof level.attempts === 'object') {
+                                    const attemptsArray = Object.values(level.attempts);
+                                    if (attemptsArray.length > 0) {
+                                        const lastAttempt = attemptsArray[attemptsArray.length - 1];
+                                        html += `
+                                            <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 5px;">
+                                                <strong>${levelInfo.name}</strong>: 
+                                                ${level.mastery ? `<span class="mastery-badge mastery-${level.mastery.toLowerCase()}" style="font-size: 12px; padding: 3px 10px;">${level.mastery}</span>` : 'In Progress'}
+                                                <br>
+                                                <small>Last: ${lastAttempt.correctCount}/10 correct, ${lastAttempt.avgTime.toFixed(1)}s avg, ${attemptsArray.length} attempts</small>
+                                            </div>`;
+                                    }
+                                }
+                            }
                         }
+                        
+                        html += '</div>';
                     }
-                    
-                    html += '</div>';
                 }
+                
+                statsDiv.innerHTML = html;
+            } catch (error) {
+                statsDiv.innerHTML = `<div class="error-message">Error loading student data: ${error.message}</div>`;
             }
             
-            statsDiv.innerHTML = html;
             showScreen('teacher-view');
         }
     </script>
