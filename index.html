@@ -263,6 +263,16 @@
             font-size: 14px;
         }
         
+        .mastery-progress {
+            background: #e3f2fd;
+            border: 2px solid #2196f3;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            text-align: center;
+            font-size: 14px;
+        }
+        
         @media (max-width: 600px) {
             .container {
                 padding: 20px;
@@ -346,7 +356,7 @@
                         <div class="stat-label">Accuracy</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value" id="incorrect-remaining">0</div>
+                        <div class="stat-value" id="questions-remaining">0</div>
                         <div class="stat-label">Questions to Master</div>
                     </div>
                 </div>
@@ -400,22 +410,25 @@
         let timerInterval = null;
         let studentData = null;
         let incorrectQuestions = {}; // Track incorrect questions for current session
+        let authInitialized = false;
         
-        // Level definitions
+        // Level definitions with question counts
         const levels = {
             A: {
                 name: 'Level A - Kindergarten',
                 description: 'Addition & Subtraction to 5',
                 operations: ['+', '-'],
                 maxNumber: 5,
-                unlocked: true
+                unlocked: true,
+                questionsPerRound: 10
             },
             B: {
                 name: 'Level B - Grade 1',
                 description: 'Addition & Subtraction to 10',
                 operations: ['+', '-'],
                 maxNumber: 10,
-                unlocked: false
+                unlocked: false,
+                questionsPerRound: 13
             },
             C: {
                 name: 'Level C - Grade 2',
@@ -423,36 +436,101 @@
                 operations: ['+', '-', '×', '÷'],
                 maxNumber: 18,
                 multMax: 5,
-                unlocked: false
+                unlocked: false,
+                questionsPerRound: 15
             },
             D: {
                 name: 'Level D - Grade 3',
                 description: 'Multiplication & Division to 9×9',
                 operations: ['×', '÷'],
                 maxNumber: 9,
-                unlocked: false
+                unlocked: false,
+                questionsPerRound: 17
             },
             E: {
                 name: 'Level E - Grade 4',
                 description: 'Multiplication & Division to 12×12',
                 operations: ['×', '÷'],
                 maxNumber: 12,
-                unlocked: false
+                unlocked: false,
+                questionsPerRound: 19
             }
         };
         
-        // Timing thresholds
-        const timings = {
-            MASTERY: 4,
-            ACCOMPLISHED: 6,
-            BASIC: 8
-        };
+        // Timing thresholds - different for Kindergarten vs other grades
+        function getTimingThresholds(levelKey) {
+            if (levelKey === 'A') {
+                return { MASTERY: 4, ACCOMPLISHED: 6, BASIC: 8 };
+            } else {
+                return { MASTERY: 2, ACCOMPLISHED: 4, BASIC: 6 };
+            }
+        }
+        
+        // Generate complete question set for each level
+        function generateCompleteQuestionSet(levelKey) {
+            const level = levels[levelKey];
+            const questionSet = new Set();
+            
+            if (level.operations.includes('+')) {
+                for (let sum = 0; sum <= level.maxNumber; sum++) {
+                    for (let num1 = 0; num1 <= sum; num1++) {
+                        const num2 = sum - num1;
+                        questionSet.add(`${num1}|${num2}|+|${sum}`);
+                    }
+                }
+            }
+            
+            if (level.operations.includes('-')) {
+                for (let num1 = 0; num1 <= level.maxNumber; num1++) {
+                    for (let num2 = 0; num2 <= num1; num2++) {
+                        const answer = num1 - num2;
+                        questionSet.add(`${num1}|${num2}|-|${answer}`);
+                    }
+                }
+            }
+            
+            if (level.operations.includes('×')) {
+                const max = level.multMax || level.maxNumber;
+                for (let num1 = 1; num1 <= max; num1++) {
+                    for (let num2 = 1; num2 <= max; num2++) {
+                        const answer = num1 * num2;
+                        questionSet.add(`${num1}|${num2}|×|${answer}`);
+                    }
+                }
+            }
+            
+            if (level.operations.includes('÷')) {
+                const max = level.multMax || level.maxNumber;
+                for (let num2 = 1; num2 <= max; num2++) {
+                    for (let answer = 1; answer <= max; answer++) {
+                        const num1 = num2 * answer;
+                        questionSet.add(`${num1}|${num2}|÷|${answer}`);
+                    }
+                }
+            }
+            
+            return Array.from(questionSet);
+        }
         
         // Check authentication state
         auth.onAuthStateChanged(async (user) => {
-            if (user) {
+            if (user && !authInitialized) {
+                authInitialized = true;
                 currentUser = user;
                 await loadUserData();
+                
+                // Check if user is a teacher
+                const snapshot = await database.ref('users/' + currentUser.uid + '/isTeacher').once('value');
+                isTeacher = snapshot.val() === true;
+                
+                if (isTeacher) {
+                    showTeacherView();
+                } else {
+                    showLevelSelect();
+                }
+            } else if (!user) {
+                authInitialized = false;
+                showScreen('login-screen');
             }
         });
         
@@ -470,18 +548,25 @@
                 const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                 const user = userCredential.user;
                 
+                // Generate complete question sets for all levels
+                const levelData = {};
+                for (let levelKey in levels) {
+                    const completeSet = generateCompleteQuestionSet(levelKey);
+                    levelData[levelKey] = {
+                        unlocked: levelKey === 'A',
+                        mastery: null,
+                        attempts: [],
+                        masteredQuestions: {},
+                        completeQuestionSet: completeSet
+                    };
+                }
+                
                 // Initialize user data in database
                 await database.ref('users/' + user.uid).set({
                     email: user.email,
                     isTeacher: false,
                     createdAt: new Date().toISOString(),
-                    levels: {
-                        A: { unlocked: true, mastery: null, attempts: [], incorrectQuestions: {} },
-                        B: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} },
-                        C: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} },
-                        D: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} },
-                        E: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} }
-                    }
+                    levels: levelData
                 });
                 
                 errorDiv.innerHTML = '<div class="success-message">Account created successfully!</div>';
@@ -502,12 +587,7 @@
             
             try {
                 document.getElementById('student-login-btn').disabled = true;
-                const userCredential = await auth.signInWithEmailAndPassword(email, password);
-                currentUser = userCredential.user;
-                isTeacher = false;
-                
-                await loadUserData();
-                showLevelSelect();
+                await auth.signInWithEmailAndPassword(email, password);
                 errorDiv.innerHTML = '';
             } catch (error) {
                 errorDiv.innerHTML = `<div class="error-message">${error.message}</div>`;
@@ -535,7 +615,6 @@
                 isTeacher = snapshot.val() === true;
                 
                 if (!isTeacher) {
-                    // User is not authorized as a teacher
                     await auth.signOut();
                     currentUser = null;
                     errorDiv.innerHTML = '<div class="error-message">This account is not authorized for teacher access. Please contact an administrator to request teacher privileges.</div>';
@@ -543,7 +622,6 @@
                     return;
                 }
                 
-                showTeacherView();
                 errorDiv.innerHTML = '';
             } catch (error) {
                 errorDiv.innerHTML = `<div class="error-message">${error.message}</div>`;
@@ -559,24 +637,35 @@
             
             // Initialize if no data exists
             if (!studentData || !studentData.levels) {
+                const levelData = {};
+                for (let levelKey in levels) {
+                    const completeSet = generateCompleteQuestionSet(levelKey);
+                    levelData[levelKey] = {
+                        unlocked: levelKey === 'A',
+                        mastery: null,
+                        attempts: [],
+                        masteredQuestions: {},
+                        completeQuestionSet: completeSet
+                    };
+                }
+                
                 studentData = {
                     email: currentUser.email,
                     isTeacher: false,
-                    levels: {
-                        A: { unlocked: true, mastery: null, attempts: [], incorrectQuestions: {} },
-                        B: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} },
-                        C: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} },
-                        D: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} },
-                        E: { unlocked: false, mastery: null, attempts: [], incorrectQuestions: {} }
-                    }
+                    levels: levelData
                 };
                 await database.ref('users/' + currentUser.uid).set(studentData);
             }
             
-            // Ensure each level has incorrectQuestions
+            // Ensure each level has required fields
             for (let levelKey in studentData.levels) {
-                if (!studentData.levels[levelKey].incorrectQuestions) {
-                    studentData.levels[levelKey].incorrectQuestions = {};
+                if (!studentData.levels[levelKey].masteredQuestions) {
+                    studentData.levels[levelKey].masteredQuestions = {};
+                }
+                if (!studentData.levels[levelKey].completeQuestionSet) {
+                    studentData.levels[levelKey].completeQuestionSet = generateCompleteQuestionSet(levelKey);
+                    await database.ref('users/' + currentUser.uid + '/levels/' + levelKey + '/completeQuestionSet')
+                        .set(studentData.levels[levelKey].completeQuestionSet);
                 }
             }
         }
@@ -586,8 +675,11 @@
             currentUser = null;
             isTeacher = false;
             studentData = null;
+            authInitialized = false;
             document.getElementById('email').value = '';
             document.getElementById('password').value = '';
+            document.getElementById('student-login-btn').disabled = false;
+            document.getElementById('teacher-login-btn').disabled = false;
             showScreen('login-screen');
         }
         
@@ -618,22 +710,27 @@
                     masteryText = `<div style="font-size: 14px; margin-top: 10px;">${studentLevel.mastery}</div>`;
                 }
                 
-                // Count incorrect questions
-                const incorrectCount = Object.keys(studentLevel.incorrectQuestions || {}).length;
-                let incorrectText = '';
-                if (incorrectCount > 0) {
-                    incorrectText = `<div style="font-size: 12px; margin-top: 5px; background: rgba(255,255,255,0.3); padding: 5px; border-radius: 5px;">📝 ${incorrectCount} to master</div>`;
+                // Count mastered vs total questions
+                const totalQuestions = (studentLevel.completeQuestionSet || []).length;
+                const masteredCount = Object.keys(studentLevel.masteredQuestions || {}).length;
+                const remaining = totalQuestions - masteredCount;
+                
+                let progressText = '';
+                if (totalQuestions > 0) {
+                    progressText = `<div style="font-size: 12px; margin-top: 5px; background: rgba(255,255,255,0.3); padding: 5px; border-radius: 5px;">📊 ${masteredCount}/${totalQuestions} mastered</div>`;
                 }
                 
                 card.innerHTML = `
                     <h3>${level.name}</h3>
                     <p style="font-size: 14px;">${level.description}</p>
                     ${masteryText}
-                    ${incorrectText}
+                    ${progressText}
                 `;
                 
                 if (studentLevel.unlocked) {
                     card.onclick = () => startLevel(levelKey);
+                } else {
+                    card.innerHTML += `<div style="font-size: 12px; margin-top: 10px;">🔒 Achieve MASTERY on previous level</div>`;
                 }
                 
                 grid.appendChild(card);
@@ -646,16 +743,20 @@
             currentLevel = levelKey;
             currentQuestion = 0;
             answers = [];
-            incorrectQuestions = {}; // Reset session incorrect questions
+            incorrectQuestions = {};
             questions = generateQuestions(levelKey);
             
-            // Display incorrect question count
-            const incorrectCount = Object.keys(studentData.levels[levelKey].incorrectQuestions || {}).length;
+            // Display progress info
+            const studentLevel = studentData.levels[levelKey];
+            const totalQuestions = (studentLevel.completeQuestionSet || []).length;
+            const masteredCount = Object.keys(studentLevel.masteredQuestions || {}).length;
+            const remaining = totalQuestions - masteredCount;
+            
             const displayDiv = document.getElementById('incorrect-count-display');
-            if (incorrectCount > 0) {
-                displayDiv.innerHTML = `<div class="incorrect-count">📝 You have ${incorrectCount} question${incorrectCount !== 1 ? 's' : ''} to master in this level</div>`;
+            if (remaining > 0) {
+                displayDiv.innerHTML = `<div class="mastery-progress">📊 Progress: ${masteredCount}/${totalQuestions} questions mastered (${remaining} remaining)</div>`;
             } else {
-                displayDiv.innerHTML = '';
+                displayDiv.innerHTML = `<div class="mastery-progress" style="background: #d4edda; border-color: #28a745;">✓ All ${totalQuestions} questions mastered! Practice to improve your speed.</div>`;
             }
             
             showNextQuestion();
@@ -666,39 +767,30 @@
             const level = levels[levelKey];
             const studentLevel = studentData.levels[levelKey];
             const questionSet = [];
+            const questionsPerRound = level.questionsPerRound;
             
-            // Get incorrect questions from Firebase
-            const storedIncorrect = studentLevel.incorrectQuestions || {};
-            const incorrectArray = Object.keys(storedIncorrect).map(key => {
-                const parts = key.split('|');
-                return {
+            // Get unmastered questions
+            const completeSet = studentLevel.completeQuestionSet || [];
+            const masteredQuestions = studentLevel.masteredQuestions || {};
+            const unmasteredQuestions = completeSet.filter(q => !masteredQuestions[q]);
+            
+            // Prioritize unmastered questions
+            const numUnmastered = Math.min(unmasteredQuestions.length, questionsPerRound);
+            
+            for (let i = 0; i < numUnmastered; i++) {
+                const questionKey = unmasteredQuestions[Math.floor(Math.random() * unmasteredQuestions.length)];
+                const parts = questionKey.split('|');
+                questionSet.push({
                     num1: parseInt(parts[0]),
                     num2: parseInt(parts[1]),
                     op: parts[2],
                     answer: parseInt(parts[3]),
-                    fromIncorrectList: true
-                };
-            });
-            
-            // Determine how many questions to pull from incorrect list
-            const incorrectCount = incorrectArray.length;
-            let incorrectToUse = 0;
-            if (incorrectCount >= 3) {
-                incorrectToUse = 3;
-            } else if (incorrectCount === 2) {
-                incorrectToUse = 2;
-            } else if (incorrectCount === 1) {
-                incorrectToUse = 1;
+                    isUnmastered: true
+                });
             }
             
-            // Add questions from incorrect list
-            for (let i = 0; i < incorrectToUse && i < incorrectArray.length; i++) {
-                questionSet.push(incorrectArray[i]);
-            }
-            
-            // Generate new questions for the rest
-            const newQuestionCount = 10 - incorrectToUse;
-            for (let i = 0; i < newQuestionCount; i++) {
+            // Fill remaining with random questions
+            for (let i = numUnmastered; i < questionsPerRound; i++) {
                 questionSet.push(generateSingleQuestion(level));
             }
             
@@ -730,7 +822,7 @@
                 num1 = num2 * answer;
             }
             
-            return { num1, num2, op, answer, fromIncorrectList: false };
+            return { num1, num2, op, answer, isUnmastered: false };
         }
         
         function showNextQuestion() {
@@ -785,12 +877,6 @@
                     time: timeTaken
                 });
                 
-                // Remove from incorrect list if it was from there
-                if (q.fromIncorrectList) {
-                    const key = `${q.num1}|${q.num2}|${q.op}|${q.answer}`;
-                    delete incorrectQuestions[key];
-                }
-                
                 setTimeout(() => {
                     currentQuestion++;
                     showNextQuestion();
@@ -813,10 +899,6 @@
                         time: timeTaken
                     });
                     
-                    // Add to incorrect questions list for this session
-                    const key = `${q.num1}|${q.num2}|${q.op}|${q.answer}`;
-                    incorrectQuestions[key] = true;
-                    
                     setTimeout(() => {
                         currentQuestion++;
                         showNextQuestion();
@@ -833,34 +915,30 @@
             const avgTime = totalTime / answers.length;
             const accuracy = (correctCount / answers.length) * 100;
             
-            // Update Firebase incorrect questions list
             const levelRef = database.ref('users/' + currentUser.uid + '/levels/' + currentLevel);
-            const currentIncorrect = studentData.levels[currentLevel].incorrectQuestions || {};
+            const masteredQuestions = studentData.levels[currentLevel].masteredQuestions || {};
             
-            // Add new incorrect questions
-            for (let key in incorrectQuestions) {
-                currentIncorrect[key] = true;
-            }
-            
-            // Remove questions that were answered correctly this session
+            // Update mastered questions
             for (let answer of answers) {
-                if (answer.correct && answer.question.fromIncorrectList) {
+                if (answer.correct) {
                     const key = `${answer.question.num1}|${answer.question.num2}|${answer.question.op}|${answer.question.answer}`;
-                    delete currentIncorrect[key];
+                    masteredQuestions[key] = true;
                 }
             }
             
-            // Save updated incorrect questions to Firebase
-            await levelRef.child('incorrectQuestions').set(currentIncorrect);
-            studentData.levels[currentLevel].incorrectQuestions = currentIncorrect;
+            await levelRef.child('masteredQuestions').set(masteredQuestions);
+            studentData.levels[currentLevel].masteredQuestions = masteredQuestions;
             
-            // Count remaining incorrect questions
-            const remainingIncorrect = Object.keys(currentIncorrect).length;
+            // Calculate progress
+            const totalQuestions = (studentData.levels[currentLevel].completeQuestionSet || []).length;
+            const masteredCount = Object.keys(masteredQuestions).length;
+            const remainingQuestions = totalQuestions - masteredCount;
+            const allQuestionsMastered = remainingQuestions === 0;
             
-            // Determine mastery level
-            // To achieve mastery, must have no incorrect questions AND meet time/accuracy requirements
+            // Determine mastery level - requires ALL questions mastered
+            const timings = getTimingThresholds(currentLevel);
             let mastery = null;
-            if (accuracy >= 80 && remainingIncorrect === 0) {
+            if (accuracy >= 80 && allQuestionsMastered) {
                 if (avgTime <= timings.MASTERY) {
                     mastery = 'MASTERY';
                 } else if (avgTime <= timings.ACCOMPLISHED) {
@@ -877,22 +955,22 @@
                 avgTime: avgTime,
                 accuracy: accuracy,
                 mastery: mastery,
-                remainingIncorrect: remainingIncorrect,
+                masteredCount: masteredCount,
+                totalQuestions: totalQuestions,
+                remainingQuestions: remainingQuestions,
                 answers: answers.map(a => ({
                     question: `${a.question.num1} ${a.question.op} ${a.question.num2}`,
                     correctAnswer: a.question.answer,
                     userAnswer: a.userAnswer,
                     correct: a.correct,
-                    time: a.time,
-                    wasFromIncorrectList: a.question.fromIncorrectList || false
+                    time: a.time
                 }))
             };
             
-            // Update Firebase
             // Add attempt
             await levelRef.child('attempts').push(attemptData);
             
-            // Update mastery level only if achieved
+            // Update mastery level only if achieved and better than current
             if (mastery) {
                 const currentMastery = studentData.levels[currentLevel].mastery;
                 if (!currentMastery || 
@@ -903,8 +981,8 @@
                 }
             }
             
-            // Unlock next level if ACCOMPLISHED or MASTERY
-            if (mastery === 'ACCOMPLISHED' || mastery === 'MASTERY') {
+            // Unlock next level ONLY if MASTERY achieved
+            if (mastery === 'MASTERY') {
                 const levelKeys = Object.keys(levels);
                 const currentIndex = levelKeys.indexOf(currentLevel);
                 if (currentIndex < levelKeys.length - 1) {
@@ -918,17 +996,26 @@
             document.getElementById('correct-count').textContent = correctCount;
             document.getElementById('avg-time').textContent = avgTime.toFixed(1) + 's';
             document.getElementById('accuracy').textContent = accuracy.toFixed(0) + '%';
-            document.getElementById('incorrect-remaining').textContent = remainingIncorrect;
+            document.getElementById('questions-remaining').textContent = remainingQuestions;
             
             const badgeDiv = document.getElementById('mastery-badge');
             if (mastery) {
-                badgeDiv.innerHTML = `<div class="mastery-badge mastery-${mastery.toLowerCase()}">${mastery}</div>`;
-            } else if (remainingIncorrect > 0) {
-                badgeDiv.innerHTML = `<p style="color: #666;">You still have ${remainingIncorrect} question${remainingIncorrect !== 1 ? 's' : ''} to master. Keep practicing!</p>`;
+                let nextLevelMsg = '';
+                if (mastery === 'MASTERY') {
+                    const levelKeys = Object.keys(levels);
+                    const currentIndex = levelKeys.indexOf(currentLevel);
+                    if (currentIndex < levelKeys.length - 1) {
+                        nextLevelMsg = '<p style="color: #28a745; margin-top: 10px;">🎉 Next level unlocked!</p>';
+                    }
+                }
+                badgeDiv.innerHTML = `<div class="mastery-badge mastery-${mastery.toLowerCase()}">${mastery}</div>${nextLevelMsg}`;
+            } else if (!allQuestionsMastered) {
+                badgeDiv.innerHTML = `<p style="color: #666;">You have ${remainingQuestions} of ${totalQuestions} questions left to master. Keep practicing!</p>`;
             } else if (accuracy < 80) {
                 badgeDiv.innerHTML = '<p style="color: #666;">You need 80% accuracy to achieve mastery. Keep practicing!</p>';
             } else {
-                badgeDiv.innerHTML = '<p style="color: #666;">Work on your speed to achieve mastery!</p>';
+                const timings = getTimingThresholds(currentLevel);
+                badgeDiv.innerHTML = `<p style="color: #666;">Work on your speed! Try to average under ${timings.BASIC}s to achieve mastery.</p>`;
             }
             
             showScreen('results-screen');
@@ -964,7 +1051,7 @@
                 } else {
                     for (let userId in allUsers) {
                         const user = allUsers[userId];
-                        if (user.isTeacher) continue; // Skip teachers
+                        if (user.isTeacher) continue;
                         
                         html += `<div class="student-card">
                             <h4>${user.email || 'Unknown Student'}</h4>`;
@@ -978,14 +1065,18 @@
                                     const attemptsArray = Object.values(level.attempts);
                                     if (attemptsArray.length > 0) {
                                         const lastAttempt = attemptsArray[attemptsArray.length - 1];
-                                        const incorrectCount = Object.keys(level.incorrectQuestions || {}).length;
+                                        const totalQuestions = (level.completeQuestionSet || []).length;
+                                        const masteredCount = Object.keys(level.masteredQuestions || {}).length;
+                                        const remaining = totalQuestions - masteredCount;
+                                        
                                         html += `
                                             <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 5px;">
                                                 <strong>${levelInfo.name}</strong>: 
                                                 ${level.mastery ? `<span class="mastery-badge mastery-${level.mastery.toLowerCase()}" style="font-size: 12px; padding: 3px 10px;">${level.mastery}</span>` : 'In Progress'}
                                                 <br>
-                                                <small>Last: ${lastAttempt.correctCount}/10 correct, ${lastAttempt.avgTime.toFixed(1)}s avg, ${attemptsArray.length} attempts</small>
-                                                ${incorrectCount > 0 ? `<br><small style="color: #dc3545;">📝 ${incorrectCount} questions to master</small>` : ''}
+                                                <small>Progress: ${masteredCount}/${totalQuestions} questions mastered</small>
+                                                <br>
+                                                <small>Last: ${lastAttempt.correctCount}/${questions.length || lastAttempt.answers.length} correct, ${lastAttempt.avgTime.toFixed(1)}s avg, ${attemptsArray.length} attempts</small>
                                             </div>`;
                                     }
                                 }
