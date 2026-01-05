@@ -445,11 +445,11 @@
                     <h3>👨‍👩‍👧 Parent & Student Instructions</h3>
                     <ul>
                         <li><strong>Sign up with your teacher's email</strong> to join their class. Ask your teacher for their email address.</li>
+                        <li><strong>Your grade level</strong> is automatically set based on your teacher's class.</li>
                         <li><strong>Practice math facts</strong> by selecting a level and answering questions as quickly and accurately as you can.</li>
                         <li><strong>5-second countdown</strong> gives you time to get ready before each practice session starts.</li>
                         <li><strong>Master all questions</strong> in a level with 80%+ accuracy to earn mastery badges.</li>
                         <li><strong>Unlock new levels</strong> by achieving MASTERY status (fast answers + high accuracy + all questions mastered).</li>
-                        <li><strong>Grade 2 students</strong> start with Level B unlocked automatically!</li>
                     </ul>
                 </div>
             </div>
@@ -505,19 +505,7 @@
             <div class="form-group" id="student-teacher-group" style="display: none;">
                 <label for="student-teacher-email">Teacher's Email</label>
                 <input type="email" id="student-teacher-email" placeholder="Enter your teacher's email">
-            </div>
-            
-            <div class="form-group" id="student-grade-group" style="display: none;">
-                <label for="student-grade">Your Grade Level</label>
-                <select id="student-grade">
-                    <option value="">Select your grade...</option>
-                    <option value="K">Kindergarten</option>
-                    <option value="1">Grade 1</option>
-                    <option value="2">Grade 2</option>
-                    <option value="3">Grade 3</option>
-                    <option value="4">Grade 4</option>
-                    <option value="5">Grade 5</option>
-                </select>
+                <small style="color: #666;">Your grade level will be set based on your teacher's class.</small>
             </div>
             
             <div style="text-align: center; margin-top: 20px;">
@@ -838,12 +826,10 @@
                 document.getElementById('signup-title').textContent = '👩‍🏫 Teacher Sign Up';
                 document.getElementById('teacher-grade-group').style.display = 'block';
                 document.getElementById('student-teacher-group').style.display = 'none';
-                document.getElementById('student-grade-group').style.display = 'none';
             } else {
                 document.getElementById('signup-title').textContent = '👨‍🎓 Student Sign Up';
                 document.getElementById('teacher-grade-group').style.display = 'none';
                 document.getElementById('student-teacher-group').style.display = 'block';
-                document.getElementById('student-grade-group').style.display = 'block';
             }
             
             showScreen('signup-screen');
@@ -902,7 +888,6 @@
                 } else {
                     // Student signup
                     const teacherEmail = document.getElementById('student-teacher-email').value.trim().toLowerCase();
-                    const studentGrade = document.getElementById('student-grade').value;
                     
                     if (!teacherEmail) {
                         errorDiv.innerHTML = '<div class="error-message">Please enter your teacher\'s email</div>';
@@ -910,8 +895,40 @@
                         return;
                     }
                     
+                    // Look up the teacher by email to get their grade
+                    const teacherSnapshot = await database.ref('users')
+                        .orderByChild('email')
+                        .equalTo(teacherEmail)
+                        .once('value');
+                    
+                    const teacherData = teacherSnapshot.val();
+                    
+                    if (!teacherData) {
+                        errorDiv.innerHTML = '<div class="error-message">No teacher found with that email address. Please check the email and try again.</div>';
+                        isSigningUp = false;
+                        return;
+                    }
+                    
+                    // Find the teacher record (there should be only one)
+                    let teacherRecord = null;
+                    for (let key in teacherData) {
+                        if (teacherData[key].isTeacher) {
+                            teacherRecord = teacherData[key];
+                            break;
+                        }
+                    }
+                    
+                    if (!teacherRecord || !teacherRecord.isTeacher) {
+                        errorDiv.innerHTML = '<div class="error-message">That email is not registered as a teacher account. Please check the email and try again.</div>';
+                        isSigningUp = false;
+                        return;
+                    }
+                    
+                    // Get the student's grade from the teacher's class grade
+                    const studentGrade = teacherRecord.classGrade;
+                    
                     if (!studentGrade) {
-                        errorDiv.innerHTML = '<div class="error-message">Please select your grade level</div>';
+                        errorDiv.innerHTML = '<div class="error-message">The teacher account does not have a grade level set. Please contact your teacher.</div>';
                         isSigningUp = false;
                         return;
                     }
@@ -920,7 +937,7 @@
                     const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                     const user = userCredential.user;
                     
-                    // Determine unlocked levels based on student's grade
+                    // Determine unlocked levels based on teacher's grade
                     const unlockedLevels = getUnlockedLevelsForGrade(studentGrade);
                     
                     // Generate complete question sets for all levels
@@ -951,7 +968,8 @@
                     await auth.signOut();
                     isSigningUp = false;
                     
-                    errorDiv.innerHTML = '<div class="success-message">Student account created successfully! You can now login.</div>';
+                    const gradeLabel = studentGrade === 'K' ? 'Kindergarten' : `Grade ${studentGrade}`;
+                    errorDiv.innerHTML = `<div class="success-message">Student account created successfully! You've been added to your teacher's ${gradeLabel} class. You can now login.</div>`;
                 }
                 
             } catch (error) {
