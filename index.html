@@ -33,7 +33,7 @@
             margin-bottom: 30px;
         }
         
-        .login-screen, .level-select, .question-screen, .results-screen, .teacher-view {
+        .login-screen, .level-select, .question-screen, .results-screen, .teacher-view, .signup-screen, .countdown-screen {
             display: none;
         }
         
@@ -73,13 +73,25 @@
             background: #5a6268;
         }
         
-        input[type="text"], input[type="password"], input[type="number"], input[type="email"] {
+        .btn-teacher {
+            background: #28a745;
+        }
+        
+        .btn-teacher:hover {
+            background: #218838;
+        }
+        
+        input[type="text"], input[type="password"], input[type="number"], input[type="email"], select {
             width: 100%;
             padding: 12px;
             margin: 10px 0;
             border: 2px solid #ddd;
             border-radius: 8px;
             font-size: 16px;
+        }
+        
+        select {
+            background: white;
         }
         
         .level-grid {
@@ -111,7 +123,7 @@
         }
         
         .level-card h3 {
-            font-size: 32px;
+            font-size: 24px;
             margin-bottom: 10px;
         }
         
@@ -273,6 +285,111 @@
             font-size: 14px;
         }
         
+        .instructions-section {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .instructions-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .instructions-section ul {
+            margin-left: 20px;
+            color: #555;
+        }
+        
+        .instructions-section li {
+            margin: 8px 0;
+            line-height: 1.5;
+        }
+        
+        .pilot-banner {
+            background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+            color: #333;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        
+        .tabs {
+            display: flex;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #ddd;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 16px;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.3s;
+        }
+        
+        .tab:hover {
+            color: #667eea;
+        }
+        
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: bold;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .countdown-display {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        
+        .countdown-number {
+            font-size: 120px;
+            color: #667eea;
+            font-weight: bold;
+            animation: pulse 1s ease-in-out infinite;
+        }
+        
+        .countdown-text {
+            font-size: 24px;
+            color: #666;
+            margin-top: 20px;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        
+        .form-group {
+            margin: 15px 0;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        
         @media (max-width: 600px) {
             .container {
                 padding: 20px;
@@ -285,6 +402,10 @@
             .answer-input {
                 font-size: 24px;
             }
+            
+            .countdown-number {
+                font-size: 80px;
+            }
         }
     </style>
 </head>
@@ -294,7 +415,45 @@
         
         <!-- Login Screen -->
         <div class="login-screen active">
-            <h2 style="text-align: center; margin-bottom: 20px;">Login</h2>
+            <div class="pilot-banner">
+                🚀 Pilot Program - Currently available for Grade 2 students
+            </div>
+            
+            <h2 style="text-align: center; margin-bottom: 20px;">Welcome!</h2>
+            
+            <!-- Instructions Tabs -->
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('teachers-tab')">👩‍🏫 For Teachers</button>
+                <button class="tab" onclick="switchTab('parents-tab')">👨‍👩‍👧 For Parents & Students</button>
+            </div>
+            
+            <div id="teachers-tab" class="tab-content active">
+                <div class="instructions-section">
+                    <h3>👩‍🏫 Teacher Instructions</h3>
+                    <ul>
+                        <li><strong>Sign up as a teacher</strong> using the "Teacher Sign Up" button below. Select your grade level during registration.</li>
+                        <li><strong>Share your email</strong> with students/parents so they can join your class when they sign up.</li>
+                        <li><strong>Track student progress</strong> through your Teacher Dashboard, which shows mastery levels and practice statistics for each student in your class.</li>
+                        <li><strong>Mastery levels:</strong> Students achieve BASIC, ACCOMPLISHED, or MASTERY based on accuracy (≥80%) and speed. Only MASTERY unlocks the next level.</li>
+                        <li><strong>Questions per round</strong> vary by level (10-19 questions), with timing thresholds adjusted for kindergarteners.</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div id="parents-tab" class="tab-content">
+                <div class="instructions-section">
+                    <h3>👨‍👩‍👧 Parent & Student Instructions</h3>
+                    <ul>
+                        <li><strong>Sign up with your teacher's email</strong> to join their class. Ask your teacher for their email address.</li>
+                        <li><strong>Practice math facts</strong> by selecting a level and answering questions as quickly and accurately as you can.</li>
+                        <li><strong>5-second countdown</strong> gives you time to get ready before each practice session starts.</li>
+                        <li><strong>Master all questions</strong> in a level with 80%+ accuracy to earn mastery badges.</li>
+                        <li><strong>Unlock new levels</strong> by achieving MASTERY status (fast answers + high accuracy + all questions mastered).</li>
+                        <li><strong>Grade 2+ students</strong> start with Level B unlocked automatically!</li>
+                    </ul>
+                </div>
+            </div>
+            
             <div id="login-error"></div>
             <input type="email" id="email" placeholder="Email">
             <input type="password" id="password" placeholder="Password">
@@ -303,11 +462,68 @@
                 <button class="btn btn-secondary" onclick="teacherLogin()" id="teacher-login-btn">Teacher Login</button>
             </div>
             <div style="text-align: center; margin-top: 20px;">
-                <button class="btn" onclick="showSignup()" style="background: #28a745;">Sign Up</button>
+                <button class="btn" onclick="showSignupScreen('student')" style="background: #17a2b8;">Student Sign Up</button>
+                <button class="btn btn-teacher" onclick="showSignupScreen('teacher')">Teacher Sign Up</button>
             </div>
-            <p style="text-align: center; margin-top: 20px; color: #666; font-size: 14px;">
-                Create an account or login with your email
-            </p>
+        </div>
+        
+        <!-- Signup Screen -->
+        <div class="signup-screen">
+            <h2 style="text-align: center; margin-bottom: 20px;" id="signup-title">Sign Up</h2>
+            <div id="signup-error"></div>
+            
+            <div class="form-group">
+                <label for="signup-email">Email</label>
+                <input type="email" id="signup-email" placeholder="Enter your email">
+            </div>
+            
+            <div class="form-group">
+                <label for="signup-password">Password</label>
+                <input type="password" id="signup-password" placeholder="Create a password (min 6 characters)">
+            </div>
+            
+            <div class="form-group">
+                <label for="signup-name">Name</label>
+                <input type="text" id="signup-name" placeholder="Enter your name">
+            </div>
+            
+            <!-- Teacher-specific field -->
+            <div class="form-group" id="teacher-grade-group" style="display: none;">
+                <label for="teacher-grade">Your Class Grade Level</label>
+                <select id="teacher-grade">
+                    <option value="">Select grade level...</option>
+                    <option value="K">Kindergarten</option>
+                    <option value="1">Grade 1</option>
+                    <option value="2">Grade 2</option>
+                    <option value="3">Grade 3</option>
+                    <option value="4">Grade 4</option>
+                    <option value="5">Grade 5</option>
+                </select>
+            </div>
+            
+            <!-- Student-specific fields -->
+            <div class="form-group" id="student-teacher-group" style="display: none;">
+                <label for="student-teacher-email">Teacher's Email</label>
+                <input type="email" id="student-teacher-email" placeholder="Enter your teacher's email">
+            </div>
+            
+            <div class="form-group" id="student-grade-group" style="display: none;">
+                <label for="student-grade">Your Grade Level</label>
+                <select id="student-grade">
+                    <option value="">Select your grade...</option>
+                    <option value="K">Kindergarten</option>
+                    <option value="1">Grade 1</option>
+                    <option value="2">Grade 2</option>
+                    <option value="3">Grade 3</option>
+                    <option value="4">Grade 4</option>
+                    <option value="5">Grade 5</option>
+                </select>
+            </div>
+            
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="btn" onclick="completeSignup()" id="signup-btn">Create Account</button>
+                <button class="btn btn-secondary" onclick="backToLogin()">Back to Login</button>
+            </div>
         </div>
         
         <!-- Level Select Screen -->
@@ -318,6 +534,18 @@
             </div>
             <p style="margin-bottom: 20px;">Choose your level:</p>
             <div class="level-grid" id="level-grid"></div>
+        </div>
+        
+        <!-- Countdown Screen -->
+        <div class="countdown-screen">
+            <div class="countdown-display">
+                <div class="countdown-text">Get Ready!</div>
+                <div class="countdown-number" id="countdown-number">5</div>
+                <div class="countdown-text" id="countdown-level-name"></div>
+                <div style="margin-top: 30px;">
+                    <button class="btn btn-secondary" onclick="cancelCountdown()">Cancel</button>
+                </div>
+            </div>
         </div>
         
         <!-- Question Screen -->
@@ -373,6 +601,9 @@
                 <h2>Teacher Dashboard</h2>
                 <button class="btn btn-secondary" onclick="logout()">Logout</button>
             </div>
+            <div id="teacher-info" style="background: #e3f2fd; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                <strong>Class:</strong> <span id="teacher-class-info"></span>
+            </div>
             <div id="teacher-stats" class="loading">Loading student data...</div>
         </div>
     </div>
@@ -409,8 +640,10 @@
         let startTime = null;
         let timerInterval = null;
         let studentData = null;
-        let incorrectQuestions = {}; // Track incorrect questions for current session
+        let incorrectQuestions = {};
         let authInitialized = false;
+        let signupType = 'student';
+        let countdownInterval = null;
         
         // Level definitions with question counts
         const levels = {
@@ -456,6 +689,34 @@
                 questionsPerRound: 19
             }
         };
+        
+        // Tab switching for instructions
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            document.getElementById(tabId).classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        // Determine starting unlocked levels based on grade
+        function getUnlockedLevelsForGrade(grade) {
+            const unlocked = { A: true, B: false, C: false, D: false, E: false };
+            
+            // Grade 2 and up start with Level B unlocked
+            if (['2', '3', '4', '5'].includes(grade)) {
+                unlocked.B = true;
+            }
+            // Could extend this for higher grades if needed
+            if (['3', '4', '5'].includes(grade)) {
+                unlocked.C = true;
+            }
+            if (['4', '5'].includes(grade)) {
+                unlocked.D = true;
+            }
+            
+            return unlocked;
+        }
         
         // Timing thresholds - different for Kindergarten vs other grades
         function getTimingThresholds(levelKey) {
@@ -534,42 +795,136 @@
             }
         });
         
-        async function showSignup() {
-            const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value;
-            const errorDiv = document.getElementById('login-error');
+        function showSignupScreen(type) {
+            signupType = type;
+            document.getElementById('signup-error').innerHTML = '';
+            document.getElementById('signup-email').value = '';
+            document.getElementById('signup-password').value = '';
+            document.getElementById('signup-name').value = '';
             
-            if (!email || !password) {
-                errorDiv.innerHTML = '<div class="error-message">Please enter email and password</div>';
+            if (type === 'teacher') {
+                document.getElementById('signup-title').textContent = '👩‍🏫 Teacher Sign Up';
+                document.getElementById('teacher-grade-group').style.display = 'block';
+                document.getElementById('student-teacher-group').style.display = 'none';
+                document.getElementById('student-grade-group').style.display = 'none';
+            } else {
+                document.getElementById('signup-title').textContent = '👨‍🎓 Student Sign Up';
+                document.getElementById('teacher-grade-group').style.display = 'none';
+                document.getElementById('student-teacher-group').style.display = 'block';
+                document.getElementById('student-grade-group').style.display = 'block';
+            }
+            
+            showScreen('signup-screen');
+        }
+        
+        function backToLogin() {
+            showScreen('login-screen');
+        }
+        
+        async function completeSignup() {
+            const email = document.getElementById('signup-email').value.trim();
+            const password = document.getElementById('signup-password').value;
+            const name = document.getElementById('signup-name').value.trim();
+            const errorDiv = document.getElementById('signup-error');
+            
+            if (!email || !password || !name) {
+                errorDiv.innerHTML = '<div class="error-message">Please fill in all required fields</div>';
+                return;
+            }
+            
+            if (password.length < 6) {
+                errorDiv.innerHTML = '<div class="error-message">Password must be at least 6 characters</div>';
                 return;
             }
             
             try {
-                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-                const user = userCredential.user;
-                
-                // Generate complete question sets for all levels
-                const levelData = {};
-                for (let levelKey in levels) {
-                    const completeSet = generateCompleteQuestionSet(levelKey);
-                    levelData[levelKey] = {
-                        unlocked: levelKey === 'A',
-                        mastery: null,
-                        attempts: [],
-                        masteredQuestions: {},
-                        completeQuestionSet: completeSet
-                    };
+                if (signupType === 'teacher') {
+                    const grade = document.getElementById('teacher-grade').value;
+                    if (!grade) {
+                        errorDiv.innerHTML = '<div class="error-message">Please select your class grade level</div>';
+                        return;
+                    }
+                    
+                    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                    const user = userCredential.user;
+                    
+                    // Create teacher account
+                    await database.ref('users/' + user.uid).set({
+                        email: user.email,
+                        name: name,
+                        isTeacher: true,
+                        classGrade: grade,
+                        createdAt: new Date().toISOString()
+                    });
+                    
+                    // Also index by email for student lookup
+                    const emailKey = email.replace(/\./g, ',');
+                    await database.ref('teacherEmails/' + emailKey).set({
+                        uid: user.uid,
+                        grade: grade
+                    });
+                    
+                    errorDiv.innerHTML = '<div class="success-message">Teacher account created successfully! You can now login.</div>';
+                    
+                } else {
+                    // Student signup
+                    const teacherEmail = document.getElementById('student-teacher-email').value.trim().toLowerCase();
+                    const studentGrade = document.getElementById('student-grade').value;
+                    
+                    if (!teacherEmail) {
+                        errorDiv.innerHTML = '<div class="error-message">Please enter your teacher\'s email</div>';
+                        return;
+                    }
+                    
+                    if (!studentGrade) {
+                        errorDiv.innerHTML = '<div class="error-message">Please select your grade level</div>';
+                        return;
+                    }
+                    
+                    // Verify teacher exists
+                    const teacherEmailKey = teacherEmail.replace(/\./g, ',');
+                    const teacherSnapshot = await database.ref('teacherEmails/' + teacherEmailKey).once('value');
+                    const teacherData = teacherSnapshot.val();
+                    
+                    if (!teacherData) {
+                        errorDiv.innerHTML = '<div class="error-message">Teacher not found. Please check the email address and make sure your teacher has signed up.</div>';
+                        return;
+                    }
+                    
+                    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                    const user = userCredential.user;
+                    
+                    // Determine unlocked levels based on grade
+                    const unlockedLevels = getUnlockedLevelsForGrade(studentGrade);
+                    
+                    // Generate complete question sets for all levels
+                    const levelData = {};
+                    for (let levelKey in levels) {
+                        const completeSet = generateCompleteQuestionSet(levelKey);
+                        levelData[levelKey] = {
+                            unlocked: unlockedLevels[levelKey],
+                            mastery: null,
+                            attempts: [],
+                            masteredQuestions: {},
+                            completeQuestionSet: completeSet
+                        };
+                    }
+                    
+                    // Initialize student data in database
+                    await database.ref('users/' + user.uid).set({
+                        email: user.email,
+                        name: name,
+                        isTeacher: false,
+                        grade: studentGrade,
+                        teacherEmail: teacherEmail,
+                        teacherUid: teacherData.uid,
+                        createdAt: new Date().toISOString(),
+                        levels: levelData
+                    });
+                    
+                    errorDiv.innerHTML = '<div class="success-message">Student account created successfully! You can now login.</div>';
                 }
                 
-                // Initialize user data in database
-                await database.ref('users/' + user.uid).set({
-                    email: user.email,
-                    isTeacher: false,
-                    createdAt: new Date().toISOString(),
-                    levels: levelData
-                });
-                
-                errorDiv.innerHTML = '<div class="success-message">Account created successfully!</div>';
             } catch (error) {
                 errorDiv.innerHTML = `<div class="error-message">${error.message}</div>`;
             }
@@ -617,7 +972,7 @@
                 if (!isTeacher) {
                     await auth.signOut();
                     currentUser = null;
-                    errorDiv.innerHTML = '<div class="error-message">This account is not authorized for teacher access. Please contact an administrator to request teacher privileges.</div>';
+                    errorDiv.innerHTML = '<div class="error-message">This account is not a teacher account. Please use "Student Login" or sign up as a teacher.</div>';
                     document.getElementById('teacher-login-btn').disabled = false;
                     return;
                 }
@@ -635,8 +990,8 @@
             const snapshot = await database.ref('users/' + currentUser.uid).once('value');
             studentData = snapshot.val();
             
-            // Initialize if no data exists
-            if (!studentData || !studentData.levels) {
+            // Initialize if no data exists (legacy accounts)
+            if (!studentData || (!studentData.levels && !studentData.isTeacher)) {
                 const levelData = {};
                 for (let levelKey in levels) {
                     const completeSet = generateCompleteQuestionSet(levelKey);
@@ -657,15 +1012,17 @@
                 await database.ref('users/' + currentUser.uid).set(studentData);
             }
             
-            // Ensure each level has required fields
-            for (let levelKey in studentData.levels) {
-                if (!studentData.levels[levelKey].masteredQuestions) {
-                    studentData.levels[levelKey].masteredQuestions = {};
-                }
-                if (!studentData.levels[levelKey].completeQuestionSet) {
-                    studentData.levels[levelKey].completeQuestionSet = generateCompleteQuestionSet(levelKey);
-                    await database.ref('users/' + currentUser.uid + '/levels/' + levelKey + '/completeQuestionSet')
-                        .set(studentData.levels[levelKey].completeQuestionSet);
+            // Ensure each level has required fields (for students)
+            if (studentData.levels) {
+                for (let levelKey in studentData.levels) {
+                    if (!studentData.levels[levelKey].masteredQuestions) {
+                        studentData.levels[levelKey].masteredQuestions = {};
+                    }
+                    if (!studentData.levels[levelKey].completeQuestionSet) {
+                        studentData.levels[levelKey].completeQuestionSet = generateCompleteQuestionSet(levelKey);
+                        await database.ref('users/' + currentUser.uid + '/levels/' + levelKey + '/completeQuestionSet')
+                            .set(studentData.levels[levelKey].completeQuestionSet);
+                    }
                 }
             }
         }
@@ -684,7 +1041,7 @@
         }
         
         function showScreen(screenClass) {
-            document.querySelectorAll('.login-screen, .level-select, .question-screen, .results-screen, .teacher-view').forEach(el => {
+            document.querySelectorAll('.login-screen, .level-select, .question-screen, .results-screen, .teacher-view, .signup-screen, .countdown-screen').forEach(el => {
                 el.classList.remove('active');
             });
             document.querySelector('.' + screenClass).classList.add('active');
@@ -693,7 +1050,8 @@
         function showLevelSelect() {
             if (!studentData) return;
             
-            document.getElementById('student-name').textContent = currentUser.email.split('@')[0];
+            const displayName = studentData.name || currentUser.email.split('@')[0];
+            document.getElementById('student-name').textContent = displayName;
             const grid = document.getElementById('level-grid');
             grid.innerHTML = '';
             
@@ -728,7 +1086,7 @@
                 `;
                 
                 if (studentLevel.unlocked) {
-                    card.onclick = () => startLevel(levelKey);
+                    card.onclick = () => startCountdown(levelKey);
                 } else {
                     card.innerHTML += `<div style="font-size: 12px; margin-top: 10px;">🔒 Achieve MASTERY on previous level</div>`;
                 }
@@ -737,6 +1095,35 @@
             }
             
             showScreen('level-select');
+        }
+        
+        function startCountdown(levelKey) {
+            currentLevel = levelKey;
+            document.getElementById('countdown-level-name').textContent = levels[levelKey].name;
+            
+            let count = 5;
+            document.getElementById('countdown-number').textContent = count;
+            
+            showScreen('countdown-screen');
+            
+            countdownInterval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    document.getElementById('countdown-number').textContent = count;
+                } else {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                    startLevel(levelKey);
+                }
+            }, 1000);
+        }
+        
+        function cancelCountdown() {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            showLevelSelect();
         }
         
         function startLevel(levelKey) {
@@ -1033,28 +1420,46 @@
         }
         
         function retryLevel() {
-            startLevel(currentLevel);
+            startCountdown(currentLevel);
+        }
+        
+        function getGradeLabel(grade) {
+            if (grade === 'K') return 'Kindergarten';
+            return `Grade ${grade}`;
         }
         
         async function showTeacherView() {
             const statsDiv = document.getElementById('teacher-stats');
             statsDiv.innerHTML = '<div class="loading">Loading student data...</div>';
             
+            // Show teacher info
+            const teacherData = studentData;
+            document.getElementById('teacher-class-info').textContent = 
+                `${getGradeLabel(teacherData.classGrade)} (${teacherData.email})`;
+            
             try {
-                const snapshot = await database.ref('users').once('value');
-                const allUsers = snapshot.val();
+                // Only fetch students assigned to this teacher
+                const snapshot = await database.ref('users')
+                    .orderByChild('teacherUid')
+                    .equalTo(currentUser.uid)
+                    .once('value');
+                const students = snapshot.val();
                 
-                let html = '<h3>Student Progress Overview</h3>';
+                let html = '<h3>My Students</h3>';
                 
-                if (!allUsers) {
-                    html += '<p style="color: #666; padding: 20px;">No student data available yet.</p>';
+                if (!students) {
+                    html += `<p style="color: #666; padding: 20px;">No students have joined your class yet.</p>
+                             <p style="color: #666; padding: 0 20px;">Share your email (<strong>${teacherData.email}</strong>) with students so they can sign up and join your class.</p>`;
                 } else {
-                    for (let userId in allUsers) {
-                        const user = allUsers[userId];
+                    let studentCount = 0;
+                    for (let userId in students) {
+                        const user = students[userId];
                         if (user.isTeacher) continue;
                         
+                        studentCount++;
                         html += `<div class="student-card">
-                            <h4>${user.email || 'Unknown Student'}</h4>`;
+                            <h4>${user.name || user.email || 'Unknown Student'}</h4>
+                            <small style="color: #666;">${user.email} - ${getGradeLabel(user.grade)}</small>`;
                         
                         if (user.levels) {
                             for (let levelKey in user.levels) {
@@ -1067,7 +1472,6 @@
                                         const lastAttempt = attemptsArray[attemptsArray.length - 1];
                                         const totalQuestions = (level.completeQuestionSet || []).length;
                                         const masteredCount = Object.keys(level.masteredQuestions || {}).length;
-                                        const remaining = totalQuestions - masteredCount;
                                         
                                         html += `
                                             <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 5px;">
@@ -1076,7 +1480,7 @@
                                                 <br>
                                                 <small>Progress: ${masteredCount}/${totalQuestions} questions mastered</small>
                                                 <br>
-                                                <small>Last: ${lastAttempt.correctCount}/${questions.length || lastAttempt.answers.length} correct, ${lastAttempt.avgTime.toFixed(1)}s avg, ${attemptsArray.length} attempts</small>
+                                                <small>Last: ${lastAttempt.correctCount}/${lastAttempt.answers ? lastAttempt.answers.length : '?'} correct, ${lastAttempt.avgTime.toFixed(1)}s avg, ${attemptsArray.length} attempts</small>
                                             </div>`;
                                     }
                                 }
@@ -1084,6 +1488,11 @@
                         }
                         
                         html += '</div>';
+                    }
+                    
+                    if (studentCount === 0) {
+                        html += `<p style="color: #666; padding: 20px;">No students have joined your class yet.</p>
+                                 <p style="color: #666; padding: 0 20px;">Share your email (<strong>${teacherData.email}</strong>) with students so they can sign up and join your class.</p>`;
                     }
                 }
                 
