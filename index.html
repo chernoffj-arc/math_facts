@@ -449,7 +449,7 @@
                         <li><strong>5-second countdown</strong> gives you time to get ready before each practice session starts.</li>
                         <li><strong>Master all questions</strong> in a level with 80%+ accuracy to earn mastery badges.</li>
                         <li><strong>Unlock new levels</strong> by achieving MASTERY status (fast answers + high accuracy + all questions mastered).</li>
-                        <li><strong>Grade 2+ students</strong> start with Level B unlocked automatically!</li>
+                        <li><strong>Grade 2 students</strong> start with Level B unlocked automatically!</li>
                     </ul>
                 </div>
             </div>
@@ -505,19 +505,6 @@
             <div class="form-group" id="student-teacher-group" style="display: none;">
                 <label for="student-teacher-email">Teacher's Email</label>
                 <input type="email" id="student-teacher-email" placeholder="Enter your teacher's email">
-            </div>
-            
-            <div class="form-group" id="student-grade-group" style="display: none;">
-                <label for="student-grade">Your Grade Level</label>
-                <select id="student-grade">
-                    <option value="">Select your grade...</option>
-                    <option value="K">Kindergarten</option>
-                    <option value="1">Grade 1</option>
-                    <option value="2">Grade 2</option>
-                    <option value="3">Grade 3</option>
-                    <option value="4">Grade 4</option>
-                    <option value="5">Grade 5</option>
-                </select>
             </div>
             
             <div style="text-align: center; margin-top: 20px;">
@@ -806,12 +793,10 @@
                 document.getElementById('signup-title').textContent = '👩‍🏫 Teacher Sign Up';
                 document.getElementById('teacher-grade-group').style.display = 'block';
                 document.getElementById('student-teacher-group').style.display = 'none';
-                document.getElementById('student-grade-group').style.display = 'none';
             } else {
                 document.getElementById('signup-title').textContent = '👨‍🎓 Student Sign Up';
                 document.getElementById('teacher-grade-group').style.display = 'none';
                 document.getElementById('student-teacher-group').style.display = 'block';
-                document.getElementById('student-grade-group').style.display = 'block';
             }
             
             showScreen('signup-screen');
@@ -850,18 +835,11 @@
                     
                     // Create teacher account
                     await database.ref('users/' + user.uid).set({
-                        email: user.email,
+                        email: user.email.toLowerCase(),
                         name: name,
                         isTeacher: true,
                         classGrade: grade,
                         createdAt: new Date().toISOString()
-                    });
-                    
-                    // Also index by email for student lookup
-                    const emailKey = email.replace(/\./g, ',');
-                    await database.ref('teacherEmails/' + emailKey).set({
-                        uid: user.uid,
-                        grade: grade
                     });
                     
                     errorDiv.innerHTML = '<div class="success-message">Teacher account created successfully! You can now login.</div>';
@@ -869,30 +847,18 @@
                 } else {
                     // Student signup
                     const teacherEmail = document.getElementById('student-teacher-email').value.trim().toLowerCase();
-                    const studentGrade = document.getElementById('student-grade').value;
                     
                     if (!teacherEmail) {
                         errorDiv.innerHTML = '<div class="error-message">Please enter your teacher\'s email</div>';
                         return;
                     }
                     
-                    if (!studentGrade) {
-                        errorDiv.innerHTML = '<div class="error-message">Please select your grade level</div>';
-                        return;
-                    }
-                    
-                    // Verify teacher exists
-                    const teacherEmailKey = teacherEmail.replace(/\./g, ',');
-                    const teacherSnapshot = await database.ref('teacherEmails/' + teacherEmailKey).once('value');
-                    const teacherData = teacherSnapshot.val();
-                    
-                    if (!teacherData) {
-                        errorDiv.innerHTML = '<div class="error-message">Teacher not found. Please check the email address and make sure your teacher has signed up.</div>';
-                        return;
-                    }
-                    
+                    // Create the student account
                     const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                     const user = userCredential.user;
+                    
+                    // Default to grade 2 (pilot program) - students inherit unlocked levels based on this
+                    const studentGrade = '2';
                     
                     // Determine unlocked levels based on grade
                     const unlockedLevels = getUnlockedLevelsForGrade(studentGrade);
@@ -912,12 +878,11 @@
                     
                     // Initialize student data in database
                     await database.ref('users/' + user.uid).set({
-                        email: user.email,
+                        email: user.email.toLowerCase(),
                         name: name,
                         isTeacher: false,
                         grade: studentGrade,
                         teacherEmail: teacherEmail,
-                        teacherUid: teacherData.uid,
                         createdAt: new Date().toISOString(),
                         levels: levelData
                     });
@@ -1434,14 +1399,15 @@
             
             // Show teacher info
             const teacherData = studentData;
+            const teacherEmail = (teacherData.email || currentUser.email).toLowerCase();
             document.getElementById('teacher-class-info').textContent = 
-                `${getGradeLabel(teacherData.classGrade)} (${teacherData.email})`;
+                `${getGradeLabel(teacherData.classGrade)} (${teacherEmail})`;
             
             try {
-                // Only fetch students assigned to this teacher
+                // Query students by teacherEmail field
                 const snapshot = await database.ref('users')
-                    .orderByChild('teacherUid')
-                    .equalTo(currentUser.uid)
+                    .orderByChild('teacherEmail')
+                    .equalTo(teacherEmail)
                     .once('value');
                 const students = snapshot.val();
                 
@@ -1449,7 +1415,7 @@
                 
                 if (!students) {
                     html += `<p style="color: #666; padding: 20px;">No students have joined your class yet.</p>
-                             <p style="color: #666; padding: 0 20px;">Share your email (<strong>${teacherData.email}</strong>) with students so they can sign up and join your class.</p>`;
+                             <p style="color: #666; padding: 0 20px;">Share your email (<strong>${teacherEmail}</strong>) with students so they can sign up and join your class.</p>`;
                 } else {
                     let studentCount = 0;
                     for (let userId in students) {
@@ -1459,7 +1425,7 @@
                         studentCount++;
                         html += `<div class="student-card">
                             <h4>${user.name || user.email || 'Unknown Student'}</h4>
-                            <small style="color: #666;">${user.email} - ${getGradeLabel(user.grade)}</small>`;
+                            <small style="color: #666;">${user.email}</small>`;
                         
                         if (user.levels) {
                             for (let levelKey in user.levels) {
@@ -1492,7 +1458,7 @@
                     
                     if (studentCount === 0) {
                         html += `<p style="color: #666; padding: 20px;">No students have joined your class yet.</p>
-                                 <p style="color: #666; padding: 0 20px;">Share your email (<strong>${teacherData.email}</strong>) with students so they can sign up and join your class.</p>`;
+                                 <p style="color: #666; padding: 0 20px;">Share your email (<strong>${teacherEmail}</strong>) with students so they can sign up and join your class.</p>`;
                     }
                 }
                 
