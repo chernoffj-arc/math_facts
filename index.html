@@ -560,6 +560,7 @@
                         <li><strong>Track student progress</strong> through your Teacher Dashboard, which shows mastery levels and practice statistics for each student in your class.</li>
                         <li><strong>Reset student levels</strong> if needed using the controls in the dashboard.</li>
                         <li><strong>Mastery levels:</strong> Students achieve BASIC, ACCOMPLISHED, or MASTERY based on accuracy (≥80%) and speed. Only MASTERY unlocks the next level.</li>
+                        <li><strong>Speed matters:</strong> Answers must be both correct AND fast enough to count as mastered.</li>
                         <li><strong>Questions per round</strong> vary by level (10-19 questions).</li>
                     </ul>
                 </div>
@@ -572,6 +573,7 @@
                         <li><strong>Sign up with your teacher's email</strong> to join their class. Ask your teacher for their email address.</li>
                         <li><strong>Your grade level</strong> is automatically set based on your teacher's class.</li>
                         <li><strong>Practice math facts</strong> by selecting a level and answering questions as quickly and accurately as you can.</li>
+                        <li><strong>Speed matters:</strong> You must answer correctly AND quickly for a question to count as mastered.</li>
                         <li><strong>5-second countdown</strong> gives you time to get ready before each practice session starts.</li>
                         <li><strong>Master all questions</strong> in a level with 80%+ accuracy to earn mastery badges.</li>
                         <li><strong>Unlock new levels</strong> by achieving MASTERY status (fast answers + high accuracy + all questions mastered).</li>
@@ -622,7 +624,6 @@
                     <option value="2">Grade 2</option>
                     <option value="3">Grade 3</option>
                     <option value="4">Grade 4</option>
-                    <option value="5">Grade 5</option>
                 </select>
             </div>
             
@@ -1197,6 +1198,31 @@
             document.querySelector('.' + screenClass).classList.add('active');
         }
         
+        // Count questions mastered at each speed tier
+        function countQuestionsAtTier(masteredQuestions, tier) {
+            let count = 0;
+            for (let key in masteredQuestions) {
+                const questionTier = masteredQuestions[key];
+                if (tier === 'BASIC') {
+                    // BASIC counts anything mastered at BASIC, ACCOMPLISHED, or MASTERY
+                    if (questionTier === 'BASIC' || questionTier === 'ACCOMPLISHED' || questionTier === 'MASTERY' || questionTier === true) {
+                        count++;
+                    }
+                } else if (tier === 'ACCOMPLISHED') {
+                    // ACCOMPLISHED counts ACCOMPLISHED or MASTERY
+                    if (questionTier === 'ACCOMPLISHED' || questionTier === 'MASTERY') {
+                        count++;
+                    }
+                } else if (tier === 'MASTERY') {
+                    // MASTERY counts only MASTERY
+                    if (questionTier === 'MASTERY') {
+                        count++;
+                    }
+                }
+            }
+            return count;
+        }
+        
         function showLevelSelect() {
             if (!studentData) return;
             
@@ -1220,25 +1246,27 @@
                 
                 // Count mastered vs total questions
                 const totalQuestions = (studentLevel.completeQuestionSet || []).length;
-                const masteredCount = Object.keys(studentLevel.masteredQuestions || {}).length;
+                const masteredQuestions = studentLevel.masteredQuestions || {};
                 
-                // Calculate progress for each achievement level
-                const timings = getTimingThresholds(levelKey);
+                // Count questions at each tier
+                const basicCount = countQuestionsAtTier(masteredQuestions, 'BASIC');
+                const accomplishedCount = countQuestionsAtTier(masteredQuestions, 'ACCOMPLISHED');
+                const masteryCount = countQuestionsAtTier(masteredQuestions, 'MASTERY');
                 
                 let progressText = '';
                 if (totalQuestions > 0) {
-                    progressText = `<div style="font-size: 12px; margin-top: 5px; background: rgba(255,255,255,0.3); padding: 5px; border-radius: 5px;">📊 ${masteredCount}/${totalQuestions} mastered</div>`;
+                    progressText = `<div style="font-size: 12px; margin-top: 5px; background: rgba(255,255,255,0.3); padding: 5px; border-radius: 5px;">📊 ${masteryCount}/${totalQuestions} mastered</div>`;
                     
-                    // Show achievement thresholds
+                    // Show question counts at each tier instead of time thresholds
                     progressText += `<div class="level-progress-detail">
                         <div class="level-progress-item ${studentLevel.mastery === 'BASIC' || studentLevel.mastery === 'ACCOMPLISHED' || studentLevel.mastery === 'MASTERY' ? 'achieved' : ''}">
-                            BASIC<br>&lt;${timings.BASIC}s
+                            BASIC<br>${basicCount}/${totalQuestions}
                         </div>
                         <div class="level-progress-item ${studentLevel.mastery === 'ACCOMPLISHED' || studentLevel.mastery === 'MASTERY' ? 'achieved' : ''}">
-                            ACCOMPLISHED<br>&lt;${timings.ACCOMPLISHED}s
+                            ACCOMPLISHED<br>${accomplishedCount}/${totalQuestions}
                         </div>
                         <div class="level-progress-item ${studentLevel.mastery === 'MASTERY' ? 'achieved' : ''}">
-                            MASTERY<br>&lt;${timings.MASTERY}s
+                            MASTERY<br>${masteryCount}/${totalQuestions}
                         </div>
                     </div>`;
                 }
@@ -1300,12 +1328,12 @@
             
             const studentLevel = studentData.levels[levelKey];
             const totalQuestions = (studentLevel.completeQuestionSet || []).length;
-            const masteredCount = Object.keys(studentLevel.masteredQuestions || {}).length;
-            const remaining = totalQuestions - masteredCount;
+            const masteryCount = countQuestionsAtTier(studentLevel.masteredQuestions || {}, 'MASTERY');
+            const remaining = totalQuestions - masteryCount;
             
             const displayDiv = document.getElementById('incorrect-count-display');
             if (remaining > 0) {
-                displayDiv.innerHTML = `<div class="mastery-progress">📊 Progress: ${masteredCount}/${totalQuestions} questions mastered (${remaining} remaining)</div>`;
+                displayDiv.innerHTML = `<div class="mastery-progress">📊 Progress: ${masteryCount}/${totalQuestions} questions mastered (${remaining} remaining)</div>`;
             } else {
                 displayDiv.innerHTML = `<div class="mastery-progress" style="background: #d4edda; border-color: #28a745;">✓ All ${totalQuestions} questions mastered! Practice to improve your speed.</div>`;
             }
@@ -1325,7 +1353,12 @@
             
             const completeSet = studentLevel.completeQuestionSet || [];
             const masteredQuestions = studentLevel.masteredQuestions || {};
-            const unmasteredQuestions = completeSet.filter(q => !masteredQuestions[q]);
+            
+            // Unmastered = not at MASTERY tier yet
+            const unmasteredQuestions = completeSet.filter(q => {
+                const tier = masteredQuestions[q];
+                return tier !== 'MASTERY';
+            });
             
             // Prioritize unmastered questions
             const numUnmastered = Math.min(unmasteredQuestions.length, questionsPerRound);
@@ -1428,6 +1461,7 @@
             const q = questions[currentQuestion];
             const feedback = document.getElementById('feedback');
             const answerTimeDiv = document.getElementById('answer-time');
+            const timings = getTimingThresholds(currentLevel);
             
             if (document.getElementById('answer-input').value === '') {
                 feedback.textContent = '';
@@ -1440,21 +1474,45 @@
                 clearInterval(timerInterval);
                 const timeTaken = (Date.now() - startTime) / 1000;
                 
-                feedback.textContent = '✓ Correct!';
-                feedback.style.color = '#28a745';
-                answerTimeDiv.textContent = `⏱️ ${timeTaken.toFixed(1)}s`;
-                
-                answers.push({
-                    question: q,
-                    userAnswer: userAnswer,
-                    correct: true,
-                    time: timeTaken
-                });
-                
-                setTimeout(() => {
-                    currentQuestion++;
-                    showNextQuestion();
-                }, 800);
+                // Check if answer is within mastery time requirement
+                // If too slow, mark as incorrect even though the answer was right
+                if (timeTaken > timings.MASTERY) {
+                    // Too slow - counts as incorrect
+                    feedback.innerHTML = `⏱️ Too slow! Answer was correct but took ${timeTaken.toFixed(1)}s (need &lt;${timings.MASTERY}s)`;
+                    feedback.style.color = '#dc3545';
+                    answerTimeDiv.textContent = `The answer was ${q.answer}`;
+                    
+                    answers.push({
+                        question: q,
+                        userAnswer: userAnswer,
+                        correct: false,
+                        tooSlow: true,
+                        time: timeTaken
+                    });
+                    
+                    setTimeout(() => {
+                        currentQuestion++;
+                        showNextQuestion();
+                    }, 2000);
+                } else {
+                    // Fast enough - correct!
+                    feedback.textContent = '✓ Correct!';
+                    feedback.style.color = '#28a745';
+                    answerTimeDiv.textContent = `⏱️ ${timeTaken.toFixed(1)}s`;
+                    
+                    answers.push({
+                        question: q,
+                        userAnswer: userAnswer,
+                        correct: true,
+                        tooSlow: false,
+                        time: timeTaken
+                    });
+                    
+                    setTimeout(() => {
+                        currentQuestion++;
+                        showNextQuestion();
+                    }, 800);
+                }
             } else {
                 const answerStr = userAnswer.toString();
                 const correctStr = q.answer.toString();
@@ -1471,6 +1529,7 @@
                         question: q,
                         userAnswer: userAnswer,
                         correct: false,
+                        tooSlow: false,
                         time: timeTaken
                     });
                     
@@ -1492,26 +1551,45 @@
             
             const levelRef = database.ref('users/' + currentUser.uid + '/levels/' + currentLevel);
             const masteredQuestions = studentData.levels[currentLevel].masteredQuestions || {};
+            const timings = getTimingThresholds(currentLevel);
             
-            // Update mastered questions - only mark as mastered if answered correctly
-            // Questions answered incorrectly or unmastered questions answered incorrectly stay unmastered
+            // Update mastered questions with tier information
+            // Only questions answered correctly AND within time thresholds get upgraded
             for (let answer of answers) {
                 const key = answer.question.key || `${answer.question.num1}|${answer.question.num2}|${answer.question.op}|${answer.question.answer}`;
-                if (answer.correct) {
-                    masteredQuestions[key] = true;
+                
+                if (answer.correct && !answer.tooSlow) {
+                    // Determine which tier this answer qualifies for
+                    let newTier = null;
+                    if (answer.time <= timings.MASTERY) {
+                        newTier = 'MASTERY';
+                    } else if (answer.time <= timings.ACCOMPLISHED) {
+                        newTier = 'ACCOMPLISHED';
+                    } else if (answer.time <= timings.BASIC) {
+                        newTier = 'BASIC';
+                    }
+                    
+                    if (newTier) {
+                        // Only upgrade tier, never downgrade
+                        const currentTier = masteredQuestions[key];
+                        const tierOrder = { 'BASIC': 1, 'ACCOMPLISHED': 2, 'MASTERY': 3 };
+                        
+                        if (!currentTier || currentTier === true || tierOrder[newTier] > (tierOrder[currentTier] || 0)) {
+                            masteredQuestions[key] = newTier;
+                        }
+                    }
                 }
-                // If incorrect, don't add to mastered (stays in unmastered pool)
+                // Questions answered incorrectly or too slowly do NOT get added to mastered
             }
             
             await levelRef.child('masteredQuestions').set(masteredQuestions);
             studentData.levels[currentLevel].masteredQuestions = masteredQuestions;
             
             const totalQuestions = (studentData.levels[currentLevel].completeQuestionSet || []).length;
-            const masteredCount = Object.keys(masteredQuestions).length;
-            const remainingQuestions = totalQuestions - masteredCount;
+            const masteryCount = countQuestionsAtTier(masteredQuestions, 'MASTERY');
+            const remainingQuestions = totalQuestions - masteryCount;
             const allQuestionsMastered = remainingQuestions === 0;
             
-            const timings = getTimingThresholds(currentLevel);
             let mastery = null;
             if (accuracy >= 80 && allQuestionsMastered) {
                 if (avgTime <= timings.MASTERY) {
@@ -1530,7 +1608,7 @@
                 avgTime: avgTime,
                 accuracy: accuracy,
                 mastery: mastery,
-                masteredCount: masteredCount,
+                masteredCount: masteryCount,
                 totalLevelQuestions: totalQuestions,
                 remainingQuestions: remainingQuestions,
                 answers: answers.map(a => ({
@@ -1538,6 +1616,7 @@
                     correctAnswer: a.question.answer,
                     userAnswer: a.userAnswer,
                     correct: a.correct,
+                    tooSlow: a.tooSlow || false,
                     time: a.time
                 }))
             };
@@ -1668,14 +1747,14 @@
                                     if (attemptsArray.length > 0) {
                                         const lastAttempt = attemptsArray[attemptsArray.length - 1];
                                         const totalQuestions = (level.completeQuestionSet || []).length;
-                                        const masteredCount = Object.keys(level.masteredQuestions || {}).length;
+                                        const masteryCount = countQuestionsAtTier(level.masteredQuestions || {}, 'MASTERY');
                                         
                                         html += `
                                             <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 5px;">
                                                 <strong>${levelInfo.name}</strong>: 
                                                 ${level.mastery ? `<span class="mastery-badge mastery-${level.mastery.toLowerCase()}" style="font-size: 12px; padding: 3px 10px;">${level.mastery}</span>` : 'In Progress'}
                                                 <br>
-                                                <small>Progress: ${masteredCount}/${totalQuestions} questions mastered</small>
+                                                <small>Progress: ${masteryCount}/${totalQuestions} questions mastered</small>
                                                 <br>
                                                 <small>Last: ${lastAttempt.correctCount}/${lastAttempt.totalQuestions || lastAttempt.answers?.length || '?'} correct, ${lastAttempt.avgTime.toFixed(1)}s avg, ${attemptsArray.length} attempts</small>
                                             </div>`;
@@ -1769,14 +1848,14 @@
                     const level = student.levels[levelKey];
                     const levelInfo = levels[levelKey];
                     const totalQuestions = (level.completeQuestionSet || []).length;
-                    const masteredCount = Object.keys(level.masteredQuestions || {}).length;
+                    const masteryCount = countQuestionsAtTier(level.masteredQuestions || {}, 'MASTERY');
                     
                     html += `<div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
                         <h4 style="margin-bottom: 10px;">${levelInfo.name} 
                             ${level.mastery ? `<span class="mastery-badge mastery-${level.mastery.toLowerCase()}" style="font-size: 12px; padding: 3px 10px;">${level.mastery}</span>` : ''}
                             ${level.unlocked ? '' : '<span style="color: #999; font-size: 12px;">🔒 Locked</span>'}
                         </h4>
-                        <p style="color: #666; font-size: 14px;">Progress: ${masteredCount}/${totalQuestions} questions mastered</p>`;
+                        <p style="color: #666; font-size: 14px;">Progress: ${masteryCount}/${totalQuestions} questions mastered</p>`;
                     
                     if (level.attempts && typeof level.attempts === 'object') {
                         const attemptsArray = Object.values(level.attempts);
@@ -1812,8 +1891,9 @@
                                 if (attempt.answers && attempt.answers.length > 0) {
                                     html += `<div class="attempt-questions">`;
                                     for (let ans of attempt.answers) {
-                                        html += `<span class="attempt-question ${ans.correct ? 'correct' : 'incorrect'}" title="${ans.question} = ${ans.correctAnswer} (answered: ${ans.userAnswer}) - ${ans.time.toFixed(1)}s">
-                                            ${ans.question} ${ans.correct ? '✓' : '✗'}
+                                        const tooSlowLabel = ans.tooSlow ? ' (slow)' : '';
+                                        html += `<span class="attempt-question ${ans.correct ? 'correct' : 'incorrect'}" title="${ans.question} = ${ans.correctAnswer} (answered: ${ans.userAnswer}) - ${ans.time.toFixed(1)}s${tooSlowLabel}">
+                                            ${ans.question} ${ans.correct ? '✓' : (ans.tooSlow ? '⏱' : '✗')}
                                         </span>`;
                                     }
                                     html += `</div>`;
