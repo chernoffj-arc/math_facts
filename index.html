@@ -510,6 +510,29 @@
             margin-top: 5px;
         }
         
+        .achievement-indicator {
+            font-size: 14px;
+            margin-top: 8px;
+            padding: 5px 12px;
+            border-radius: 15px;
+            display: inline-block;
+        }
+        
+        .achievement-mastery {
+            background: #007bff;
+            color: white;
+        }
+        
+        .achievement-accomplished {
+            background: #28a745;
+            color: white;
+        }
+        
+        .achievement-basic {
+            background: #ffc107;
+            color: #333;
+        }
+        
         @media (max-width: 600px) {
             .container {
                 padding: 20px;
@@ -674,6 +697,7 @@
                 <input type="number" class="answer-input" id="answer-input" oninput="checkAnswer()">
                 <div id="feedback" style="margin-top: 20px; font-size: 24px; font-weight: bold; min-height: 30px;"></div>
                 <div id="answer-time" class="answer-time-display" style="min-height: 25px;"></div>
+                <div id="achievement-display" style="min-height: 35px;"></div>
                 <div style="margin-top: 30px;">
                     <button class="btn btn-secondary" onclick="endSession()">End Session</button>
                 </div>
@@ -1255,17 +1279,15 @@
                 
                 let progressText = '';
                 if (totalQuestions > 0) {
-                    progressText = `<div style="font-size: 12px; margin-top: 5px; background: rgba(255,255,255,0.3); padding: 5px; border-radius: 5px;">📊 ${masteryCount}/${totalQuestions} mastered</div>`;
-                    
-                    // Show question counts at each tier instead of time thresholds
-                    progressText += `<div class="level-progress-detail">
-                        <div class="level-progress-item ${studentLevel.mastery === 'BASIC' || studentLevel.mastery === 'ACCOMPLISHED' || studentLevel.mastery === 'MASTERY' ? 'achieved' : ''}">
+                    // Show question counts at each tier in a consistent style
+                    progressText = `<div class="level-progress-detail">
+                        <div class="level-progress-item ${basicCount === totalQuestions ? 'achieved' : ''}">
                             BASIC<br>${basicCount}/${totalQuestions}
                         </div>
-                        <div class="level-progress-item ${studentLevel.mastery === 'ACCOMPLISHED' || studentLevel.mastery === 'MASTERY' ? 'achieved' : ''}">
+                        <div class="level-progress-item ${accomplishedCount === totalQuestions ? 'achieved' : ''}">
                             ACCOMPLISHED<br>${accomplishedCount}/${totalQuestions}
                         </div>
-                        <div class="level-progress-item ${studentLevel.mastery === 'MASTERY' ? 'achieved' : ''}">
+                        <div class="level-progress-item ${masteryCount === totalQuestions ? 'achieved' : ''}">
                             MASTERY<br>${masteryCount}/${totalQuestions}
                         </div>
                     </div>`;
@@ -1432,6 +1454,7 @@
             document.getElementById('answer-input').value = '';
             document.getElementById('feedback').textContent = '';
             document.getElementById('answer-time').textContent = '';
+            document.getElementById('achievement-display').innerHTML = '';
             
             // Hide timer
             document.getElementById('timer').classList.add('timer-hidden');
@@ -1456,17 +1479,32 @@
             }, 100);
         }
         
+        // Determine which achievement tier a time qualifies for
+        function getAchievementTier(timeTaken, levelKey) {
+            const timings = getTimingThresholds(levelKey);
+            if (timeTaken <= timings.MASTERY) {
+                return 'MASTERY';
+            } else if (timeTaken <= timings.ACCOMPLISHED) {
+                return 'ACCOMPLISHED';
+            } else if (timeTaken <= timings.BASIC) {
+                return 'BASIC';
+            }
+            return null;
+        }
+        
         function checkAnswer() {
             const userAnswer = parseInt(document.getElementById('answer-input').value);
             const q = questions[currentQuestion];
             const feedback = document.getElementById('feedback');
             const answerTimeDiv = document.getElementById('answer-time');
+            const achievementDiv = document.getElementById('achievement-display');
             const timings = getTimingThresholds(currentLevel);
             
             if (document.getElementById('answer-input').value === '') {
                 feedback.textContent = '';
                 feedback.style.color = '';
                 answerTimeDiv.textContent = '';
+                achievementDiv.innerHTML = '';
                 return;
             }
             
@@ -1474,45 +1512,38 @@
                 clearInterval(timerInterval);
                 const timeTaken = (Date.now() - startTime) / 1000;
                 
-                // Check if answer is within mastery time requirement
-                // If too slow, mark as incorrect even though the answer was right
-                if (timeTaken > timings.MASTERY) {
-                    // Too slow - counts as incorrect
-                    feedback.innerHTML = `⏱️ Too slow! Answer was correct but took ${timeTaken.toFixed(1)}s (need &lt;${timings.MASTERY}s)`;
-                    feedback.style.color = '#dc3545';
-                    answerTimeDiv.textContent = `The answer was ${q.answer}`;
-                    
-                    answers.push({
-                        question: q,
-                        userAnswer: userAnswer,
-                        correct: false,
-                        tooSlow: true,
-                        time: timeTaken
-                    });
-                    
-                    setTimeout(() => {
-                        currentQuestion++;
-                        showNextQuestion();
-                    }, 2000);
+                // Always show correct for correct answers
+                feedback.textContent = '✓ Correct!';
+                feedback.style.color = '#28a745';
+                answerTimeDiv.textContent = `⏱️ ${timeTaken.toFixed(1)}s`;
+                
+                // Determine achievement tier
+                const tier = getAchievementTier(timeTaken, currentLevel);
+                
+                if (tier === 'MASTERY') {
+                    achievementDiv.innerHTML = `<span class="achievement-indicator achievement-mastery">⭐ MASTERY (under ${timings.MASTERY}s)</span>`;
+                } else if (tier === 'ACCOMPLISHED') {
+                    achievementDiv.innerHTML = `<span class="achievement-indicator achievement-accomplished">🎯 ACCOMPLISHED (under ${timings.ACCOMPLISHED}s)</span>`;
+                } else if (tier === 'BASIC') {
+                    achievementDiv.innerHTML = `<span class="achievement-indicator achievement-basic">✔️ BASIC (under ${timings.BASIC}s)</span>`;
                 } else {
-                    // Fast enough - correct!
-                    feedback.textContent = '✓ Correct!';
-                    feedback.style.color = '#28a745';
-                    answerTimeDiv.textContent = `⏱️ ${timeTaken.toFixed(1)}s`;
-                    
-                    answers.push({
-                        question: q,
-                        userAnswer: userAnswer,
-                        correct: true,
-                        tooSlow: false,
-                        time: timeTaken
-                    });
-                    
-                    setTimeout(() => {
-                        currentQuestion++;
-                        showNextQuestion();
-                    }, 800);
+                    // Correct but no achievement tier - too slow
+                    achievementDiv.innerHTML = `<span style="font-size: 12px; color: #666;">Need under ${timings.BASIC}s to earn progress</span>`;
                 }
+                
+                answers.push({
+                    question: q,
+                    userAnswer: userAnswer,
+                    correct: true,
+                    tier: tier, // Store the tier achieved (or null if too slow)
+                    time: timeTaken
+                });
+                
+                setTimeout(() => {
+                    currentQuestion++;
+                    showNextQuestion();
+                }, 1200);
+                
             } else {
                 const answerStr = userAnswer.toString();
                 const correctStr = q.answer.toString();
@@ -1524,12 +1555,13 @@
                     feedback.innerHTML = `✗ Incorrect. The answer is <strong>${q.answer}</strong>`;
                     feedback.style.color = '#dc3545';
                     answerTimeDiv.textContent = `⏱️ ${timeTaken.toFixed(1)}s`;
+                    achievementDiv.innerHTML = '';
                     
                     answers.push({
                         question: q,
                         userAnswer: userAnswer,
                         correct: false,
-                        tooSlow: false,
+                        tier: null,
                         time: timeTaken
                     });
                     
@@ -1558,28 +1590,16 @@
             for (let answer of answers) {
                 const key = answer.question.key || `${answer.question.num1}|${answer.question.num2}|${answer.question.op}|${answer.question.answer}`;
                 
-                if (answer.correct && !answer.tooSlow) {
-                    // Determine which tier this answer qualifies for
-                    let newTier = null;
-                    if (answer.time <= timings.MASTERY) {
-                        newTier = 'MASTERY';
-                    } else if (answer.time <= timings.ACCOMPLISHED) {
-                        newTier = 'ACCOMPLISHED';
-                    } else if (answer.time <= timings.BASIC) {
-                        newTier = 'BASIC';
-                    }
+                if (answer.correct && answer.tier) {
+                    // Only upgrade tier, never downgrade
+                    const currentTier = masteredQuestions[key];
+                    const tierOrder = { 'BASIC': 1, 'ACCOMPLISHED': 2, 'MASTERY': 3 };
                     
-                    if (newTier) {
-                        // Only upgrade tier, never downgrade
-                        const currentTier = masteredQuestions[key];
-                        const tierOrder = { 'BASIC': 1, 'ACCOMPLISHED': 2, 'MASTERY': 3 };
-                        
-                        if (!currentTier || currentTier === true || tierOrder[newTier] > (tierOrder[currentTier] || 0)) {
-                            masteredQuestions[key] = newTier;
-                        }
+                    if (!currentTier || currentTier === true || tierOrder[answer.tier] > (tierOrder[currentTier] || 0)) {
+                        masteredQuestions[key] = answer.tier;
                     }
                 }
-                // Questions answered incorrectly or too slowly do NOT get added to mastered
+                // Questions answered incorrectly or too slowly (no tier) do NOT get added to mastered
             }
             
             await levelRef.child('masteredQuestions').set(masteredQuestions);
@@ -1616,7 +1636,7 @@
                     correctAnswer: a.question.answer,
                     userAnswer: a.userAnswer,
                     correct: a.correct,
-                    tooSlow: a.tooSlow || false,
+                    tier: a.tier || null,
                     time: a.time
                 }))
             };
@@ -1806,7 +1826,7 @@
             }
             
             const student = allStudentsData[userId];
-            if (!confirm(`Are you sure you want to reset ${student.name || student.email} to ${levels[targetLevel].name}? This will unlock that level and clear mastery status for levels after it.`)) {
+            if (!confirm(`Are you sure you want to reset ${student.name || student.email} to ${levels[targetLevel].name}? This will unlock that level and clear mastery status for that level and all levels after it.`)) {
                 return;
             }
             
@@ -1814,24 +1834,29 @@
                 const levelKeys = Object.keys(levels);
                 const targetIndex = levelKeys.indexOf(targetLevel);
                 
-                // Reset all levels from target onwards
+                // Build the updates object - update all at once
+                const updates = {};
+                
                 for (let i = targetIndex; i < levelKeys.length; i++) {
                     const levelKey = levelKeys[i];
-                    await database.ref(`users/${userId}/levels/${levelKey}`).update({
-                        unlocked: i === targetIndex, // Only unlock the target level
-                        mastery: null,
-                        masteredQuestions: {}
-                    });
+                    // Reset mastery status and mastered questions for this level and all after
+                    updates[`users/${userId}/levels/${levelKey}/mastery`] = null;
+                    updates[`users/${userId}/levels/${levelKey}/masteredQuestions`] = {};
+                    // Set unlocked status - only unlock target level, lock all after
+                    updates[`users/${userId}/levels/${levelKey}/unlocked`] = (i === targetIndex);
                 }
                 
-                // Unlock the target level
-                await database.ref(`users/${userId}/levels/${targetLevel}/unlocked`).set(true);
+                // Ensure target level is unlocked
+                updates[`users/${userId}/levels/${targetLevel}/unlocked`] = true;
+                
+                // Apply all updates at once
+                await database.ref().update(updates);
                 
                 alert(`Successfully reset ${student.name || student.email} to ${levels[targetLevel].name}`);
                 showTeacherView(); // Refresh the view
             } catch (error) {
                 console.error('Error resetting student level:', error);
-                alert('Error resetting student level. Please try again.');
+                alert('Error resetting student level: ' + error.message + '\n\nPlease check that your Firebase security rules allow teachers to modify their students\' data. See the console for details.');
             }
         }
         
@@ -1891,9 +1916,10 @@
                                 if (attempt.answers && attempt.answers.length > 0) {
                                     html += `<div class="attempt-questions">`;
                                     for (let ans of attempt.answers) {
-                                        const tooSlowLabel = ans.tooSlow ? ' (slow)' : '';
-                                        html += `<span class="attempt-question ${ans.correct ? 'correct' : 'incorrect'}" title="${ans.question} = ${ans.correctAnswer} (answered: ${ans.userAnswer}) - ${ans.time.toFixed(1)}s${tooSlowLabel}">
-                                            ${ans.question} ${ans.correct ? '✓' : (ans.tooSlow ? '⏱' : '✗')}
+                                        // Updated to show tier instead of tooSlow
+                                        const tierLabel = ans.tier ? ` (${ans.tier})` : (ans.tooSlow ? ' (slow)' : '');
+                                        html += `<span class="attempt-question ${ans.correct ? 'correct' : 'incorrect'}" title="${ans.question} = ${ans.correctAnswer} (answered: ${ans.userAnswer}) - ${ans.time.toFixed(1)}s${tierLabel}">
+                                            ${ans.question} ${ans.correct ? '✓' : '✗'}${ans.tier ? '' : (ans.correct && !ans.tier ? '⏱' : '')}
                                         </span>`;
                                     }
                                     html += `</div>`;
