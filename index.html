@@ -408,9 +408,9 @@
         }
         
         .level-progress-detail {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
             margin-top: 8px;
             font-size: 11px;
         }
@@ -551,7 +551,7 @@
             }
             
             .level-progress-detail {
-                grid-template-columns: 1fr;
+                flex-direction: column;
             }
         }
     </style>
@@ -1066,7 +1066,7 @@
                         return;
                     }
                     
-                    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                    const userCredential = await auth.createUserWithEmailWithPassword(email, password);
                     const user = userCredential.user;
                     
                     const unlockedLevels = getUnlockedLevelsForGrade(studentGrade);
@@ -1279,16 +1279,16 @@
                 
                 let progressText = '';
                 if (totalQuestions > 0) {
-                    // Show question counts at each tier in a consistent style
+                    // Show question counts at each tier in a consistent style - now vertical
                     progressText = `<div class="level-progress-detail">
                         <div class="level-progress-item ${basicCount === totalQuestions ? 'achieved' : ''}">
-                            BASIC<br>${basicCount}/${totalQuestions}
+                            BASIC: ${basicCount}/${totalQuestions}
                         </div>
                         <div class="level-progress-item ${accomplishedCount === totalQuestions ? 'achieved' : ''}">
-                            ACCOMPLISHED<br>${accomplishedCount}/${totalQuestions}
+                            ACCOMPLISHED: ${accomplishedCount}/${totalQuestions}
                         </div>
                         <div class="level-progress-item ${masteryCount === totalQuestions ? 'achieved' : ''}">
-                            MASTERY<br>${masteryCount}/${totalQuestions}
+                            MASTERY: ${masteryCount}/${totalQuestions}
                         </div>
                     </div>`;
                 }
