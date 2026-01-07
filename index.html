@@ -1066,7 +1066,7 @@
                         return;
                     }
                     
-                    const userCredential = await auth.createUserWithEmailWithPassword(email, password);
+                    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                     const user = userCredential.user;
                     
                     const unlockedLevels = getUnlockedLevelsForGrade(studentGrade);
