@@ -169,6 +169,71 @@
             margin: 0 auto;
         }
         
+        /* Number Pad Styles */
+        .number-pad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            max-width: 280px;
+            margin: 20px auto;
+        }
+        
+        .num-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 20px;
+            border-radius: 12px;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            min-height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .num-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .num-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .num-btn.clear-btn {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            font-size: 18px;
+        }
+        
+        .num-btn.clear-btn:hover {
+            box-shadow: 0 6px 12px rgba(220, 53, 69, 0.4);
+        }
+        
+        .num-btn.backspace-btn {
+            background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+            color: #333;
+            font-size: 22px;
+        }
+        
+        .num-btn.backspace-btn:hover {
+            box-shadow: 0 6px 12px rgba(255, 193, 7, 0.4);
+        }
+        
+        .num-btn.zero-btn {
+            grid-column: 2;
+        }
+        
+        .input-method-hint {
+            font-size: 12px;
+            color: #888;
+            margin-top: 5px;
+        }
+        
         .progress-bar {
             width: 100%;
             height: 30px;
@@ -553,6 +618,25 @@
             .level-progress-detail {
                 flex-direction: column;
             }
+            
+            .number-pad {
+                max-width: 240px;
+                gap: 8px;
+            }
+            
+            .num-btn {
+                padding: 15px;
+                font-size: 24px;
+                min-height: 60px;
+            }
+            
+            .num-btn.clear-btn {
+                font-size: 14px;
+            }
+            
+            .num-btn.backspace-btn {
+                font-size: 18px;
+            }
         }
     </style>
 </head>
@@ -694,7 +778,25 @@
             <div class="question-display">
                 <div class="timer timer-hidden" id="timer">Time: 0.0s</div>
                 <div class="question-text" id="question-text">5 + 3 = ?</div>
-                <input type="number" class="answer-input" id="answer-input" oninput="checkAnswer()">
+                <input type="number" class="answer-input" id="answer-input" oninput="checkAnswer()" inputmode="none">
+                <div class="input-method-hint">Type or tap the numbers below</div>
+                
+                <!-- Number Pad -->
+                <div class="number-pad">
+                    <button class="num-btn" onclick="numPadInput('1')">1</button>
+                    <button class="num-btn" onclick="numPadInput('2')">2</button>
+                    <button class="num-btn" onclick="numPadInput('3')">3</button>
+                    <button class="num-btn" onclick="numPadInput('4')">4</button>
+                    <button class="num-btn" onclick="numPadInput('5')">5</button>
+                    <button class="num-btn" onclick="numPadInput('6')">6</button>
+                    <button class="num-btn" onclick="numPadInput('7')">7</button>
+                    <button class="num-btn" onclick="numPadInput('8')">8</button>
+                    <button class="num-btn" onclick="numPadInput('9')">9</button>
+                    <button class="num-btn clear-btn" onclick="numPadClear()">Clear</button>
+                    <button class="num-btn zero-btn" onclick="numPadInput('0')">0</button>
+                    <button class="num-btn backspace-btn" onclick="numPadBackspace()">⌫</button>
+                </div>
+                
                 <div id="feedback" style="margin-top: 20px; font-size: 24px; font-weight: bold; min-height: 30px;"></div>
                 <div id="answer-time" class="answer-time-display" style="min-height: 25px;"></div>
                 <div id="achievement-display" style="min-height: 35px;"></div>
@@ -792,6 +894,42 @@
         let countdownInterval = null;
         let isSigningUp = false;
         let allStudentsData = {}; // Store all students for teacher view
+        let isProcessingAnswer = false; // Flag to prevent multiple answer submissions
+        
+        // Number Pad Functions
+        function numPadInput(num) {
+            if (isProcessingAnswer) return; // Don't allow input while processing
+            
+            const input = document.getElementById('answer-input');
+            input.value += num;
+            checkAnswer();
+        }
+        
+        function numPadClear() {
+            if (isProcessingAnswer) return;
+            
+            const input = document.getElementById('answer-input');
+            input.value = '';
+            document.getElementById('feedback').textContent = '';
+            document.getElementById('feedback').style.color = '';
+            document.getElementById('answer-time').textContent = '';
+            document.getElementById('achievement-display').innerHTML = '';
+        }
+        
+        function numPadBackspace() {
+            if (isProcessingAnswer) return;
+            
+            const input = document.getElementById('answer-input');
+            input.value = input.value.slice(0, -1);
+            
+            // Clear feedback if input is empty
+            if (input.value === '') {
+                document.getElementById('feedback').textContent = '';
+                document.getElementById('feedback').style.color = '';
+                document.getElementById('answer-time').textContent = '';
+                document.getElementById('achievement-display').innerHTML = '';
+            }
+        }
         
         // Level definitions - simplified names without grade designations
         const levels = {
@@ -1355,6 +1493,7 @@
             currentQuestion = 0;
             answers = [];
             incorrectQuestions = {};
+            isProcessingAnswer = false;
             questions = generateQuestions(levelKey);
             
             const studentLevel = studentData.levels[levelKey];
@@ -1458,6 +1597,8 @@
                 return;
             }
             
+            isProcessingAnswer = false; // Reset flag for new question
+            
             const q = questions[currentQuestion];
             document.getElementById('question-text').textContent = `${q.num1} ${q.op} ${q.num2} = ?`;
             document.getElementById('answer-input').value = '';
@@ -1484,7 +1625,6 @@
             setTimeout(() => {
                 const answerInput = document.getElementById('answer-input');
                 answerInput.focus();
-                answerInput.click();
             }, 100);
         }
         
@@ -1502,6 +1642,8 @@
         }
         
         function checkAnswer() {
+            if (isProcessingAnswer) return; // Prevent multiple submissions
+            
             const userAnswer = parseInt(document.getElementById('answer-input').value);
             const q = questions[currentQuestion];
             const feedback = document.getElementById('feedback');
@@ -1518,6 +1660,7 @@
             }
             
             if (userAnswer === q.answer) {
+                isProcessingAnswer = true; // Lock input
                 clearInterval(timerInterval);
                 const timeTaken = (Date.now() - startTime) / 1000;
                 
@@ -1558,6 +1701,7 @@
                 const correctStr = q.answer.toString();
                 
                 if (answerStr.length >= correctStr.length && userAnswer !== q.answer) {
+                    isProcessingAnswer = true; // Lock input
                     clearInterval(timerInterval);
                     const timeTaken = (Date.now() - startTime) / 1000;
                     
