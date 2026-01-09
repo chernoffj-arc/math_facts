@@ -877,12 +877,21 @@
             return 'A';
         }
         
-        // Timing thresholds
+        // Timing thresholds - Updated with new values per level
         function getTimingThresholds(levelKey) {
-            if (levelKey === 'A') {
-                return { MASTERY: 4, ACCOMPLISHED: 6, BASIC: 8 };
-            } else {
-                return { MASTERY: 2, ACCOMPLISHED: 4, BASIC: 6 };
+            switch (levelKey) {
+                case 'A':
+                    return { MASTERY: 8, ACCOMPLISHED: 18, BASIC: 30 };
+                case 'B':
+                    return { MASTERY: 8, ACCOMPLISHED: 18, BASIC: 30 };
+                case 'C':
+                    return { MASTERY: 5, ACCOMPLISHED: 15, BASIC: 25 };
+                case 'D':
+                    return { MASTERY: 4, ACCOMPLISHED: 10, BASIC: 20 };
+                case 'E':
+                    return { MASTERY: 3, ACCOMPLISHED: 10, BASIC: 15 };
+                default:
+                    return { MASTERY: 8, ACCOMPLISHED: 18, BASIC: 30 };
             }
         }
         
@@ -1565,10 +1574,11 @@
                         time: timeTaken
                     });
                     
+                    // Changed from 2000ms to 5000ms (added 3 seconds)
                     setTimeout(() => {
                         currentQuestion++;
                         showNextQuestion();
-                    }, 2000);
+                    }, 5000);
                 }
             }
         }
