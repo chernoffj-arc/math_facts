@@ -598,6 +598,13 @@
             color: #333;
         }
         
+        .loading-status {
+            text-align: center;
+            color: #667eea;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        
         @media (max-width: 600px) {
             .container {
                 padding: 20px;
@@ -689,15 +696,16 @@
             </div>
             
             <div id="login-error"></div>
+            <div id="login-status" class="loading-status"></div>
             <input type="email" id="email" placeholder="Email">
             <input type="password" id="password" placeholder="Password">
             <div style="text-align: center; margin-top: 20px;">
-                <button class="btn" onclick="login()" id="student-login-btn">Student Login</button>
-                <button class="btn btn-secondary" onclick="teacherLogin()" id="teacher-login-btn">Teacher Login</button>
+                <button class="btn" onclick="login()" id="student-login-btn" disabled>Student Login</button>
+                <button class="btn btn-secondary" onclick="teacherLogin()" id="teacher-login-btn" disabled>Teacher Login</button>
             </div>
             <div style="text-align: center; margin-top: 20px;">
-                <button class="btn" onclick="showSignupScreen('student')" style="background: #17a2b8;">Student Sign Up</button>
-                <button class="btn btn-teacher" onclick="showSignupScreen('teacher')">Teacher Sign Up</button>
+                <button class="btn" onclick="showSignupScreen('student')" id="student-signup-btn" style="background: #17a2b8;" disabled>Student Sign Up</button>
+                <button class="btn btn-teacher" onclick="showSignupScreen('teacher')" id="teacher-signup-btn" disabled>Teacher Sign Up</button>
             </div>
         </div>
         
@@ -895,6 +903,10 @@
         let isSigningUp = false;
         let allStudentsData = {}; // Store all students for teacher view
         let isProcessingAnswer = false; // Flag to prevent multiple answer submissions
+        let firebaseReady = false; // Flag to track if Firebase Auth is initialized
+        
+        // Show loading status initially
+        document.getElementById('login-status').textContent = 'Loading...';
         
         // Number Pad Functions
         function numPadInput(num) {
@@ -1079,8 +1091,21 @@
             return Array.from(questionSet);
         }
         
+        // Enable login buttons when Firebase is ready
+        function enableLoginButtons() {
+            document.getElementById('student-login-btn').disabled = false;
+            document.getElementById('teacher-login-btn').disabled = false;
+            document.getElementById('student-signup-btn').disabled = false;
+            document.getElementById('teacher-signup-btn').disabled = false;
+            document.getElementById('login-status').textContent = '';
+        }
+        
         // Check authentication state
         auth.onAuthStateChanged(async (user) => {
+            // Firebase Auth is now ready
+            firebaseReady = true;
+            enableLoginButtons();
+            
             if (isSigningUp) return;
             
             if (user && !authInitialized) {
@@ -1139,6 +1164,12 @@
             
             if (password.length < 6) {
                 errorDiv.innerHTML = '<div class="error-message">Password must be at least 6 characters</div>';
+                return;
+            }
+            
+            // Check if Firebase is ready
+            if (!firebaseReady) {
+                errorDiv.innerHTML = '<div class="error-message">Please wait a moment for the system to initialize and try again...</div>';
                 return;
             }
             
@@ -1264,6 +1295,12 @@
                 return;
             }
             
+            // Check if Firebase is ready
+            if (!firebaseReady) {
+                errorDiv.innerHTML = '<div class="error-message">Please wait a moment for the system to initialize and try again...</div>';
+                return;
+            }
+            
             try {
                 document.getElementById('student-login-btn').disabled = true;
                 await auth.signInWithEmailAndPassword(email, password);
@@ -1281,6 +1318,12 @@
             
             if (!email || !password) {
                 errorDiv.innerHTML = '<div class="error-message">Please enter email and password</div>';
+                return;
+            }
+            
+            // Check if Firebase is ready
+            if (!firebaseReady) {
+                errorDiv.innerHTML = '<div class="error-message">Please wait a moment for the system to initialize and try again...</div>';
                 return;
             }
             
