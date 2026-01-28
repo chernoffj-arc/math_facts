@@ -234,24 +234,30 @@
             margin-top: 5px;
         }
         
+        .progress-container {
+            margin: 20px 0;
+        }
+        
+        .progress-label {
+            text-align: center;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+        
         .progress-bar {
             width: 100%;
-            height: 30px;
+            height: 20px;
             background: #e0e0e0;
-            border-radius: 15px;
+            border-radius: 10px;
             overflow: hidden;
-            margin: 20px 0;
         }
         
         .progress-fill {
             height: 100%;
             background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
             transition: width 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
         }
         
         .results-summary {
@@ -390,16 +396,6 @@
         .instructions-section li {
             margin: 8px 0;
             line-height: 1.5;
-        }
-        
-        .pilot-banner {
-            background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
-            color: #333;
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-            margin-bottom: 20px;
-            font-weight: bold;
         }
         
         .tabs {
@@ -653,10 +649,6 @@
         
         <!-- Login Screen -->
         <div class="login-screen active">
-            <div class="pilot-banner">
-                🚀 Pilot Program - Currently available for Grade 2 students
-            </div>
-            
             <h2 style="text-align: center; margin-bottom: 20px;">Welcome!</h2>
             
             <!-- Instructions Tabs -->
@@ -779,8 +771,11 @@
         
         <!-- Question Screen -->
         <div class="question-screen">
-            <div class="progress-bar">
-                <div class="progress-fill" id="progress-fill">Question 1 of 10</div>
+            <div class="progress-container">
+                <div class="progress-label" id="progress-label">Question 1 of 10</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
             </div>
             <div id="incorrect-count-display"></div>
             <div class="question-display">
@@ -1005,17 +1000,18 @@
         }
         
         // Determine starting unlocked levels based on grade
-        // Grade 2 and below start at Level A
-        // Grade 3 and above start at Level D
+        // Grade K, 1, 2: Start with only Level A unlocked
+        // Grade 3, 4: Start with Levels A, B, and C unlocked
         function getUnlockedLevelsForGrade(grade) {
             const gradeNum = gradeToNumber(grade);
             const unlocked = { A: true, B: false, C: false, D: false, E: false };
             
             if (gradeNum >= 3) {
-                // Grade 3+ starts at Level D
-                unlocked.D = true;
+                // Grade 3+ starts with A, B, and C unlocked
+                unlocked.B = true;
+                unlocked.C = true;
             }
-            // Grade 2 and below start at Level A (already set)
+            // Grade K, 1, 2 start with only Level A (already set)
             
             return unlocked;
         }
@@ -1023,7 +1019,7 @@
         // Get the starting level for a grade
         function getStartingLevelForGrade(grade) {
             const gradeNum = gradeToNumber(grade);
-            if (gradeNum >= 3) return 'D';
+            if (gradeNum >= 3) return 'A'; // Still start at A, but with A, B, C available
             return 'A';
         }
         
@@ -1275,8 +1271,12 @@
                     isSigningUp = false;
                     
                     const gradeLabel = studentGrade === 'K' ? 'Kindergarten' : `Grade ${studentGrade}`;
-                    const startLevel = getStartingLevelForGrade(studentGrade);
-                    errorDiv.innerHTML = `<div class="success-message">Student account created successfully! You've been added to your teacher's ${gradeLabel} class and will start at ${levels[startLevel].name}. You can now login.</div>`;
+                    const gradeNum = gradeToNumber(studentGrade);
+                    let levelsMsg = 'Level A';
+                    if (gradeNum >= 3) {
+                        levelsMsg = 'Levels A, B, and C';
+                    }
+                    errorDiv.innerHTML = `<div class="success-message">Student account created successfully! You've been added to your teacher's ${gradeLabel} class and will start with ${levelsMsg} available. You can now login.</div>`;
                 }
                 
             } catch (error) {
@@ -1652,10 +1652,10 @@
             // Hide timer
             document.getElementById('timer').classList.add('timer-hidden');
             
+            // Update progress label (separate from progress bar)
             const progress = ((currentQuestion) / questions.length) * 100;
-            const progressFill = document.getElementById('progress-fill');
-            progressFill.style.width = progress + '%';
-            progressFill.textContent = `Question ${currentQuestion + 1} of ${questions.length}`;
+            document.getElementById('progress-label').textContent = `Question ${currentQuestion + 1} of ${questions.length}`;
+            document.getElementById('progress-fill').style.width = progress + '%';
             
             startTime = Date.now();
             if (timerInterval) clearInterval(timerInterval);
