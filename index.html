@@ -1147,6 +1147,20 @@
             showScreen('login-screen');
         }
         
+        // Helper function to delete a user account (used when student signup fails after account creation)
+        async function deleteCurrentUser() {
+            try {
+                const user = auth.currentUser;
+                if (user) {
+                    await user.delete();
+                }
+            } catch (error) {
+                console.error('Error deleting user:', error);
+                // If delete fails (e.g., requires recent login), sign out at minimum
+                await auth.signOut();
+            }
+        }
+        
         async function completeSignup() {
             const email = document.getElementById('signup-email').value.trim();
             const password = document.getElementById('signup-password').value;
@@ -1197,6 +1211,10 @@
                     errorDiv.innerHTML = '<div class="success-message">Teacher account created successfully! You can now login.</div>';
                     
                 } else {
+                    // STUDENT SIGNUP - Updated for new security rules
+                    // With authenticated-only reads, we must create the account FIRST,
+                    // then query for the teacher while authenticated
+                    
                     const teacherEmail = document.getElementById('student-teacher-email').value.trim().toLowerCase();
                     
                     if (!teacherEmail) {
@@ -1205,28 +1223,59 @@
                         return;
                     }
                     
-                    const teacherSnapshot = await database.ref('users')
-                        .orderByChild('email')
-                        .equalTo(teacherEmail)
-                        .once('value');
+                    // Step 1: Create the student account first (this authenticates them)
+                    let userCredential;
+                    try {
+                        userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                    } catch (createError) {
+                        errorDiv.innerHTML = `<div class="error-message">${createError.message}</div>`;
+                        isSigningUp = false;
+                        return;
+                    }
                     
-                    const teacherData = teacherSnapshot.val();
+                    const user = userCredential.user;
                     
-                    if (!teacherData) {
+                    // Step 2: Now that we're authenticated, query for the teacher
+                    let teacherRecord = null;
+                    let teacherSnapshot;
+                    
+                    try {
+                        teacherSnapshot = await database.ref('users')
+                            .orderByChild('email')
+                            .equalTo(teacherEmail)
+                            .once('value');
+                        
+                        const teacherData = teacherSnapshot.val();
+                        
+                        if (teacherData) {
+                            for (let key in teacherData) {
+                                if (teacherData[key].isTeacher) {
+                                    teacherRecord = teacherData[key];
+                                    break;
+                                }
+                            }
+                        }
+                    } catch (queryError) {
+                        // Query failed - delete the account and show error
+                        console.error('Error querying for teacher:', queryError);
+                        await deleteCurrentUser();
+                        errorDiv.innerHTML = '<div class="error-message">Error looking up teacher. Please try again.</div>';
+                        isSigningUp = false;
+                        return;
+                    }
+                    
+                    // Step 3: Validate teacher was found
+                    if (!teacherRecord) {
+                        // Teacher not found - delete the account we just created
+                        await deleteCurrentUser();
                         errorDiv.innerHTML = '<div class="error-message">No teacher found with that email address. Please check the email and try again.</div>';
                         isSigningUp = false;
                         return;
                     }
                     
-                    let teacherRecord = null;
-                    for (let key in teacherData) {
-                        if (teacherData[key].isTeacher) {
-                            teacherRecord = teacherData[key];
-                            break;
-                        }
-                    }
-                    
-                    if (!teacherRecord || !teacherRecord.isTeacher) {
+                    if (!teacherRecord.isTeacher) {
+                        // Not a teacher account - delete the account we just created
+                        await deleteCurrentUser();
                         errorDiv.innerHTML = '<div class="error-message">That email is not registered as a teacher account. Please check the email and try again.</div>';
                         isSigningUp = false;
                         return;
@@ -1235,14 +1284,14 @@
                     const studentGrade = teacherRecord.classGrade;
                     
                     if (!studentGrade) {
+                        // Teacher has no grade set - delete the account
+                        await deleteCurrentUser();
                         errorDiv.innerHTML = '<div class="error-message">The teacher account does not have a grade level set. Please contact your teacher.</div>';
                         isSigningUp = false;
                         return;
                     }
                     
-                    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-                    const user = userCredential.user;
-                    
+                    // Step 4: Teacher validated - now create the student's data
                     const unlockedLevels = getUnlockedLevelsForGrade(studentGrade);
                     
                     const levelData = {};
@@ -1257,16 +1306,25 @@
                         };
                     }
                     
-                    await database.ref('users/' + user.uid).set({
-                        email: user.email.toLowerCase(),
-                        name: name,
-                        isTeacher: false,
-                        grade: studentGrade,
-                        teacherEmail: teacherEmail,
-                        createdAt: new Date().toISOString(),
-                        levels: levelData
-                    });
+                    try {
+                        await database.ref('users/' + user.uid).set({
+                            email: user.email.toLowerCase(),
+                            name: name,
+                            isTeacher: false,
+                            grade: studentGrade,
+                            teacherEmail: teacherEmail,
+                            createdAt: new Date().toISOString(),
+                            levels: levelData
+                        });
+                    } catch (writeError) {
+                        console.error('Error writing student data:', writeError);
+                        await deleteCurrentUser();
+                        errorDiv.innerHTML = '<div class="error-message">Error creating account. Please try again.</div>';
+                        isSigningUp = false;
+                        return;
+                    }
                     
+                    // Step 5: Sign out so they can log in fresh
                     await auth.signOut();
                     isSigningUp = false;
                     
@@ -1281,6 +1339,10 @@
                 
             } catch (error) {
                 isSigningUp = false;
+                // Try to clean up if there's a lingering auth state
+                if (auth.currentUser) {
+                    await deleteCurrentUser();
+                }
                 errorDiv.innerHTML = `<div class="error-message">${error.message}</div>`;
             }
         }
