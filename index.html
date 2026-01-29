@@ -903,6 +903,19 @@
         // Show loading status initially
         document.getElementById('login-status').textContent = 'Loading...';
         
+        // Helper function to sanitize email for Firebase path
+        // Firebase paths cannot contain: . $ # [ ] /
+        function sanitizeEmailForPath(email) {
+            return email.toLowerCase()
+                .replace(/\./g, ',')
+                .replace(/@/g, '_at_')
+                .replace(/\$/g, '_dollar_')
+                .replace(/#/g, '_hash_')
+                .replace(/\[/g, '_lb_')
+                .replace(/\]/g, '_rb_')
+                .replace(/\//g, '_slash_');
+        }
+        
         // Number Pad Functions
         function numPadInput(num) {
             if (isProcessingAnswer) return; // Don't allow input while processing
@@ -1197,6 +1210,7 @@
                     const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                     const user = userCredential.user;
                     
+                    // Write user data
                     await database.ref('users/' + user.uid).set({
                         email: user.email.toLowerCase(),
                         name: name,
@@ -1205,15 +1219,22 @@
                         createdAt: new Date().toISOString()
                     });
                     
+                    // Write to teacherDirectory for student lookup (SECURE: only contains public info needed for signup)
+                    const sanitizedEmail = sanitizeEmailForPath(user.email);
+                    await database.ref('teacherDirectory/' + sanitizedEmail).set({
+                        uid: user.uid,
+                        grade: grade,
+                        email: user.email.toLowerCase()
+                    });
+                    
                     await auth.signOut();
                     isSigningUp = false;
                     
                     errorDiv.innerHTML = '<div class="success-message">Teacher account created successfully! You can now login.</div>';
                     
                 } else {
-                    // STUDENT SIGNUP - Updated for new security rules
-                    // With authenticated-only reads, we must create the account FIRST,
-                    // then query for the teacher while authenticated
+                    // STUDENT SIGNUP - SECURE VERSION
+                    // Uses teacherDirectory for lookup instead of querying all users
                     
                     const teacherEmail = document.getElementById('student-teacher-email').value.trim().toLowerCase();
                     
@@ -1235,29 +1256,15 @@
                     
                     const user = userCredential.user;
                     
-                    // Step 2: Now that we're authenticated, query for the teacher
-                    let teacherRecord = null;
-                    let teacherSnapshot;
+                    // Step 2: Look up teacher in teacherDirectory (SECURE: doesn't expose other users' data)
+                    const sanitizedTeacherEmail = sanitizeEmailForPath(teacherEmail);
+                    let teacherInfo = null;
                     
                     try {
-                        teacherSnapshot = await database.ref('users')
-                            .orderByChild('email')
-                            .equalTo(teacherEmail)
-                            .once('value');
-                        
-                        const teacherData = teacherSnapshot.val();
-                        
-                        if (teacherData) {
-                            for (let key in teacherData) {
-                                if (teacherData[key].isTeacher) {
-                                    teacherRecord = teacherData[key];
-                                    break;
-                                }
-                            }
-                        }
+                        const teacherDirSnapshot = await database.ref('teacherDirectory/' + sanitizedTeacherEmail).once('value');
+                        teacherInfo = teacherDirSnapshot.val();
                     } catch (queryError) {
-                        // Query failed - delete the account and show error
-                        console.error('Error querying for teacher:', queryError);
+                        console.error('Error looking up teacher:', queryError);
                         await deleteCurrentUser();
                         errorDiv.innerHTML = '<div class="error-message">Error looking up teacher. Please try again.</div>';
                         isSigningUp = false;
@@ -1265,26 +1272,17 @@
                     }
                     
                     // Step 3: Validate teacher was found
-                    if (!teacherRecord) {
-                        // Teacher not found - delete the account we just created
+                    if (!teacherInfo) {
                         await deleteCurrentUser();
                         errorDiv.innerHTML = '<div class="error-message">No teacher found with that email address. Please check the email and try again.</div>';
                         isSigningUp = false;
                         return;
                     }
                     
-                    if (!teacherRecord.isTeacher) {
-                        // Not a teacher account - delete the account we just created
-                        await deleteCurrentUser();
-                        errorDiv.innerHTML = '<div class="error-message">That email is not registered as a teacher account. Please check the email and try again.</div>';
-                        isSigningUp = false;
-                        return;
-                    }
-                    
-                    const studentGrade = teacherRecord.classGrade;
+                    const studentGrade = teacherInfo.grade;
+                    const teacherUid = teacherInfo.uid;
                     
                     if (!studentGrade) {
-                        // Teacher has no grade set - delete the account
                         await deleteCurrentUser();
                         errorDiv.innerHTML = '<div class="error-message">The teacher account does not have a grade level set. Please contact your teacher.</div>';
                         isSigningUp = false;
@@ -1316,6 +1314,13 @@
                             createdAt: new Date().toISOString(),
                             levels: levelData
                         });
+                        
+                        // Step 5: Add student to teacherStudents list (for teacher dashboard)
+                        await database.ref('teacherStudents/' + teacherUid + '/' + user.uid).set({
+                            name: name,
+                            addedAt: new Date().toISOString()
+                        });
+                        
                     } catch (writeError) {
                         console.error('Error writing student data:', writeError);
                         await deleteCurrentUser();
@@ -1324,7 +1329,7 @@
                         return;
                     }
                     
-                    // Step 5: Sign out so they can log in fresh
+                    // Step 6: Sign out so they can log in fresh
                     await auth.signOut();
                     isSigningUp = false;
                     
@@ -1982,15 +1987,14 @@
             showScreen('teacher-view');
             
             try {
-                const snapshot = await database.ref('users')
-                    .orderByChild('teacherEmail')
-                    .equalTo(teacherEmail)
-                    .once('value');
-                const students = snapshot.val();
+                // SECURE: Read from teacherStudents instead of querying all users
+                // Teacher can only see students who are in their teacherStudents list
+                const studentsListSnapshot = await database.ref('teacherStudents/' + currentUser.uid).once('value');
+                const studentsList = studentsListSnapshot.val();
                 
                 let html = '<h3>My Students</h3>';
                 
-                if (!students || Object.keys(students).length === 0) {
+                if (!studentsList || Object.keys(studentsList).length === 0) {
                     html += `<div style="background: #e3f2fd; padding: 20px; border-radius: 10px; margin-top: 15px;">
                         <p style="color: #1565c0; margin-bottom: 15px;"><strong>👋 Welcome to your dashboard!</strong></p>
                         <p style="color: #666; margin-bottom: 10px;">No students have joined your class yet.</p>
@@ -2000,59 +2004,73 @@
                     allStudentsData = {};
                     let studentCount = 0;
                     
-                    for (let userId in students) {
-                        const user = students[userId];
-                        if (user.isTeacher) continue;
+                    // Load each student's data individually (SECURE: teacher can only read their own students)
+                    for (let studentUid in studentsList) {
+                        const studentInfo = studentsList[studentUid];
                         
-                        studentCount++;
-                        allStudentsData[userId] = user;
-                        
-                        html += `<div class="student-card">
-                            <div style="display: flex; justify-content: space-between; align-items: start;">
-                                <div>
-                                    <h4>${user.name || user.email || 'Unknown Student'}</h4>
-                                    <small style="color: #666;">${user.email}</small>
-                                </div>
-                                <button class="btn btn-small" onclick="showStudentDetail('${userId}')">View Details</button>
-                            </div>`;
-                        
-                        if (user.levels) {
-                            for (let levelKey in user.levels) {
-                                const level = user.levels[levelKey];
-                                const levelInfo = levels[levelKey];
-                                
-                                if (level.attempts && typeof level.attempts === 'object') {
-                                    const attemptsArray = Object.values(level.attempts);
-                                    if (attemptsArray.length > 0) {
-                                        const lastAttempt = attemptsArray[attemptsArray.length - 1];
-                                        const totalQuestions = (level.completeQuestionSet || []).length;
-                                        const masteryCount = countQuestionsAtTier(level.masteredQuestions || {}, 'MASTERY');
-                                        
-                                        html += `
-                                            <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 5px;">
-                                                <strong>${levelInfo.name}</strong>: 
-                                                ${level.mastery ? `<span class="mastery-badge mastery-${level.mastery.toLowerCase()}" style="font-size: 12px; padding: 3px 10px;">${level.mastery}</span>` : 'In Progress'}
-                                                <br>
-                                                <small>Progress: ${masteryCount}/${totalQuestions} questions mastered</small>
-                                                <br>
-                                                <small>Last: ${lastAttempt.correctCount}/${lastAttempt.totalQuestions || lastAttempt.answers?.length || '?'} correct, ${lastAttempt.avgTime.toFixed(1)}s avg, ${attemptsArray.length} attempts</small>
-                                            </div>`;
+                        try {
+                            const studentSnapshot = await database.ref('users/' + studentUid).once('value');
+                            const user = studentSnapshot.val();
+                            
+                            if (!user) {
+                                console.warn('Student data not found for UID:', studentUid);
+                                continue;
+                            }
+                            
+                            studentCount++;
+                            allStudentsData[studentUid] = user;
+                            
+                            html += `<div class="student-card">
+                                <div style="display: flex; justify-content: space-between; align-items: start;">
+                                    <div>
+                                        <h4>${user.name || studentInfo.name || 'Unknown Student'}</h4>
+                                        <small style="color: #666;">${user.email || 'Email hidden'}</small>
+                                    </div>
+                                    <button class="btn btn-small" onclick="showStudentDetail('${studentUid}')">View Details</button>
+                                </div>`;
+                            
+                            if (user.levels) {
+                                for (let levelKey in user.levels) {
+                                    const level = user.levels[levelKey];
+                                    const levelInfo = levels[levelKey];
+                                    
+                                    if (level.attempts && typeof level.attempts === 'object') {
+                                        const attemptsArray = Object.values(level.attempts);
+                                        if (attemptsArray.length > 0) {
+                                            const lastAttempt = attemptsArray[attemptsArray.length - 1];
+                                            const totalQuestions = (level.completeQuestionSet || []).length;
+                                            const masteryCount = countQuestionsAtTier(level.masteredQuestions || {}, 'MASTERY');
+                                            
+                                            html += `
+                                                <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 5px;">
+                                                    <strong>${levelInfo.name}</strong>: 
+                                                    ${level.mastery ? `<span class="mastery-badge mastery-${level.mastery.toLowerCase()}" style="font-size: 12px; padding: 3px 10px;">${level.mastery}</span>` : 'In Progress'}
+                                                    <br>
+                                                    <small>Progress: ${masteryCount}/${totalQuestions} questions mastered</small>
+                                                    <br>
+                                                    <small>Last: ${lastAttempt.correctCount}/${lastAttempt.totalQuestions || lastAttempt.answers?.length || '?'} correct, ${lastAttempt.avgTime.toFixed(1)}s avg, ${attemptsArray.length} attempts</small>
+                                                </div>`;
+                                        }
                                     }
                                 }
                             }
+                            
+                            // Add reset controls
+                            html += `<div class="reset-controls">
+                                <label style="font-size: 12px; margin: 0;">Reset to level:</label>
+                                <select id="reset-level-${studentUid}" style="width: 120px;">
+                                    <option value="">Select...</option>
+                                    ${Object.keys(levels).map(k => `<option value="${k}">${levels[k].name}</option>`).join('')}
+                                </select>
+                                <button class="btn btn-small btn-danger" onclick="resetStudentLevel('${studentUid}')">Reset</button>
+                            </div>`;
+                            
+                            html += '</div>';
+                            
+                        } catch (studentError) {
+                            console.error('Error loading student:', studentUid, studentError);
+                            // Student might have been deleted or permission denied
                         }
-                        
-                        // Add reset controls
-                        html += `<div class="reset-controls">
-                            <label style="font-size: 12px; margin: 0;">Reset to level:</label>
-                            <select id="reset-level-${userId}" style="width: 120px;">
-                                <option value="">Select...</option>
-                                ${Object.keys(levels).map(k => `<option value="${k}">${levels[k].name}</option>`).join('')}
-                            </select>
-                            <button class="btn btn-small btn-danger" onclick="resetStudentLevel('${userId}')">Reset</button>
-                        </div>`;
-                        
-                        html += '</div>';
                     }
                     
                     if (studentCount === 0) {
@@ -2125,7 +2143,7 @@
             
             document.getElementById('student-detail-name').textContent = student.name || student.email || 'Student Details';
             
-            let html = `<p style="color: #666; margin-bottom: 20px;">${student.email}</p>`;
+            let html = `<p style="color: #666; margin-bottom: 20px;">${student.email || 'Email hidden'}</p>`;
             
             if (student.levels) {
                 for (let levelKey in student.levels) {
