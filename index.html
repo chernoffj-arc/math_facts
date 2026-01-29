@@ -647,11 +647,9 @@
     <div class="container">
         <h1>🎓 Edison Math Facts Practice</h1>
         
-        <!-- Login Screen -->
         <div class="login-screen active">
             <h2 style="text-align: center; margin-bottom: 20px;">Welcome!</h2>
             
-            <!-- Instructions Tabs -->
             <div class="tabs">
                 <button class="tab active" onclick="switchTab('teachers-tab')">👩‍🏫 For Teachers</button>
                 <button class="tab" onclick="switchTab('parents-tab')">👨‍👩‍👧 For Parents & Students</button>
@@ -701,7 +699,6 @@
             </div>
         </div>
         
-        <!-- Signup Screen -->
         <div class="signup-screen">
             <h2 style="text-align: center; margin-bottom: 20px;" id="signup-title">Sign Up</h2>
             <div id="signup-error"></div>
@@ -721,7 +718,6 @@
                 <input type="text" id="signup-name" placeholder="Enter your name">
             </div>
             
-            <!-- Teacher-specific field -->
             <div class="form-group" id="teacher-grade-group" style="display: none;">
                 <label for="teacher-grade">Your Class Grade Level</label>
                 <select id="teacher-grade">
@@ -734,7 +730,6 @@
                 </select>
             </div>
             
-            <!-- Student-specific fields -->
             <div class="form-group" id="student-teacher-group" style="display: none;">
                 <label for="student-teacher-email">Teacher's Email</label>
                 <input type="email" id="student-teacher-email" placeholder="Enter your teacher's email">
@@ -747,7 +742,6 @@
             </div>
         </div>
         
-        <!-- Level Select Screen -->
         <div class="level-select">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2>Welcome, <span id="student-name"></span>!</h2>
@@ -757,7 +751,6 @@
             <div class="level-grid" id="level-grid"></div>
         </div>
         
-        <!-- Countdown Screen -->
         <div class="countdown-screen">
             <div class="countdown-display">
                 <div class="countdown-text">Get Ready!</div>
@@ -769,7 +762,6 @@
             </div>
         </div>
         
-        <!-- Question Screen -->
         <div class="question-screen">
             <div class="progress-container">
                 <div class="progress-label" id="progress-label">Question 1 of 10</div>
@@ -784,7 +776,6 @@
                 <input type="number" class="answer-input" id="answer-input" oninput="checkAnswer()" inputmode="none">
                 <div class="input-method-hint">Type or tap the numbers below</div>
                 
-                <!-- Number Pad -->
                 <div class="number-pad">
                     <button class="num-btn" onclick="numPadInput('1')">1</button>
                     <button class="num-btn" onclick="numPadInput('2')">2</button>
@@ -809,7 +800,6 @@
             </div>
         </div>
         
-        <!-- Results Screen -->
         <div class="results-screen">
             <div class="results-summary">
                 <h2>🎉 Session Complete!</h2>
@@ -839,7 +829,6 @@
             </div>
         </div>
         
-        <!-- Teacher View -->
         <div class="teacher-view">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2>Teacher Dashboard</h2>
@@ -851,7 +840,6 @@
             <div id="teacher-stats" class="loading">Loading student data...</div>
         </div>
         
-        <!-- Student Detail Screen (for teachers) -->
         <div class="student-detail-screen">
             <span class="back-link" onclick="showTeacherView()">← Back to Dashboard</span>
             <h2 id="student-detail-name">Student Details</h2>
@@ -859,7 +847,6 @@
         </div>
     </div>
 
-    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
@@ -1236,6 +1223,8 @@
                     const user = userCredential.user;
                     
                     // Step 2: Now that we're authenticated, query for the teacher
+                    // SECURITY UPDATE: We use orderByChild('email').equalTo(teacherEmail)
+                    // This specific query is allowed by the security rules
                     let teacherRecord = null;
                     let teacherSnapshot;
                     
@@ -1970,22 +1959,38 @@
             return `Grade ${grade}`;
         }
         
+        // SECURITY UPDATE: This function has been modified to handle stricter security rules
         async function showTeacherView() {
             const statsDiv = document.getElementById('teacher-stats');
             statsDiv.innerHTML = '<div class="loading">Loading student data...</div>';
             
-            const teacherData = studentData;
-            const teacherEmail = (teacherData.email || currentUser.email).toLowerCase();
+            // Get teacher email from DB to ensure it matches the secure rule requirements
+            let teacherEmail;
+            if (studentData && studentData.email) {
+                teacherEmail = studentData.email.toLowerCase();
+            } else {
+                // Fallback: fetch directly
+                try {
+                    const snap = await database.ref('users/' + currentUser.uid + '/email').once('value');
+                    teacherEmail = snap.val().toLowerCase();
+                } catch(e) {
+                    console.error("Could not fetch own email", e);
+                }
+            }
+            
             document.getElementById('teacher-class-info').textContent = 
-                `${getGradeLabel(teacherData.classGrade)} (${teacherEmail})`;
+                `${getGradeLabel(studentData.classGrade)} (${teacherEmail})`;
             
             showScreen('teacher-view');
             
             try {
+                // SECURE QUERY: Must exactly match the structure in security rules
+                // We are querying users where 'teacherEmail' equals our email
                 const snapshot = await database.ref('users')
                     .orderByChild('teacherEmail')
                     .equalTo(teacherEmail)
                     .once('value');
+                    
                 const students = snapshot.val();
                 
                 let html = '<h3>My Students</h3>';
@@ -2070,7 +2075,7 @@
                 statsDiv.innerHTML = `<div style="background: #e3f2fd; padding: 20px; border-radius: 10px; margin-top: 15px;">
                     <p style="color: #1565c0; margin-bottom: 15px;"><strong>👋 Welcome to your dashboard!</strong></p>
                     <p style="color: #666; margin-bottom: 10px;">No students have joined your class yet.</p>
-                    <p style="color: #666;">Share your email (<strong>${currentUser.email.toLowerCase()}</strong>) with students so they can sign up and join your class.</p>
+                    <p style="color: #666;">Share your email (<strong>${teacherEmail}</strong>) with students so they can sign up and join your class.</p>
                 </div>`;
             }
         }
